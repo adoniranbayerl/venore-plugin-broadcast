@@ -1,0 +1,1 @@
+ALTER TABLE "broadcast"."playlist_items" ADD COLUMN "with_audio" boolean DEFAULT false NOT NULL;

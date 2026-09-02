@@ -1,0 +1,1040 @@
+"use client";
+
+import { useActionState, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  EyeOff,
+  PanelBottomClose,
+  PanelBottomOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Power,
+  PowerOff,
+  ScrollText,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  Tv,
+} from "lucide-react";
+import { Button } from "@venore/plugin-sdk/ui";
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@venore/plugin-sdk/ui";
+import { Input } from "@venore/plugin-sdk/ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@venore/plugin-sdk/ui";
+import { Slider } from "@venore/plugin-sdk/ui";
+import { Switch } from "@venore/plugin-sdk/ui";
+import { useActionToast } from "@venore/plugin-sdk/ui";
+import { ConfirmDeleteButton } from "./confirm-delete-form";
+import { ListDropdownBadge } from "./list-badge";
+// Importa direto de contracts/, nunca do barrel (@/plugins/broadcast) — mesmo racional de
+// playlists-section.tsx/agenda-section.tsx.
+import type { BroadcastOutputRecord, BroadcastPlaylistRecord } from "../../contracts/types";
+import { STATUS_BORDER_CLASSNAME, StatusBadge } from "./status-dot";
+import { outputItemStatus } from "./status";
+import {
+  clearAlertAction,
+  createOutputAction,
+  deleteOutputAction,
+  getConnectedOutputIpsAction,
+  publishAlertAction,
+  resetOutputPinAttemptsAction,
+  setOutputAgendaScheduleAction,
+  setOutputDrawerAction,
+  setOutputFooterAction,
+  setOutputOfflineAction,
+  setOutputPinAction,
+  setOutputPlaylistAction,
+  setOutputTickerAction,
+  type BroadcastActionState,
+  type BroadcastOutputToggleState,
+  type SetOutputPlaylistState,
+} from "./actions";
+
+const initialState: BroadcastActionState = { error: null };
+// Toggles de controle ao vivo: a action devolve a saída atualizada (ou só o id da playlist) em vez
+// de chamar revalidatePath — o componente reflete o clique na hora e reconcilia com este retorno.
+// Ver o comentário em actions.ts.
+const outputToggleInitialState: BroadcastOutputToggleState = { error: null, output: null };
+const playlistInitialState: SetOutputPlaylistState = { error: null, playlistId: null };
+
+// Toda saída nasce com sua cena/camadas fixas já prontas (vídeo + agenda + aviso rápido) — não há
+// mais o que escolher além do nome e da playlist que toca (pedido explícito: "não vamos precisar
+// configurar manualmente as camadas, você já define isso").
+function CreateOutputForm({ playlists }: { playlists: BroadcastPlaylistRecord[] }) {
+  const [state, formAction, pending] = useActionState(createOutputAction, initialState);
+  useActionToast({ pending, error: state.error, successMessage: "Saída criada." });
+
+  if (playlists.length === 0) {
+    return (
+      <p className="rounded-panel border border-border bg-card p-3 text-sm text-warning">
+        Crie uma playlist na aba &quot;Playlists&quot; antes de criar uma saída.
+      </p>
+    );
+  }
+
+  return (
+    <form action={formAction} className="flex flex-wrap items-end gap-2 rounded-panel border border-border bg-card p-3">
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground" htmlFor="output-name">Nome</label>
+        <Input id="output-name" name="name" placeholder="TV da recepção" required className="w-56" />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground" htmlFor="output-playlist">Playlist</label>
+        <Select name="playlistId" required>
+          <SelectTrigger id="output-playlist" className="w-56"><SelectValue placeholder="Escolha uma playlist..." /></SelectTrigger>
+          <SelectContent>
+            {playlists.map((playlist) => (
+              <SelectItem key={playlist.id} value={playlist.id}>{playlist.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Button type="submit" disabled={pending}>Nova saída</Button>
+    </form>
+  );
+}
+
+// navigator.clipboard só existe em contexto seguro (HTTPS ou localhost). O build deste plugin é
+// servido por HTTP na LAN (o cenário-alvo — servidor local), onde navigator.clipboard é undefined:
+// sem este guard o clique quebrava com "Cannot read properties of undefined (reading 'writeText')".
+// Fallback: <textarea> fora da tela + execCommand("copy"), que funciona em HTTP; e se nem isso,
+// o chamador mostra o link pra cópia manual.
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // cai no fallback abaixo
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// Cor própria (variant="default", primary sólido) em vez do outline neutro de antes — pedido
+// explícito: "deixe esse botão com outra cor, essa seção do card deve demonstrar para o usuário
+// que é ali que ele precisa copiar o link". w-full pra ocupar o rodapé inteiro, reforçando que é
+// a ação principal do card, não mais um botão secundário entre outros.
+function CopyOutputUrlButton({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false);
+  const path = `/broadcast/out/${token}`;
+
+  return (
+    <Button
+      type="button"
+      variant={copied ? "outline" : "default"}
+      size="sm"
+      className="w-full"
+      onClick={() => {
+        const url = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+        void copyTextToClipboard(url).then((ok) => {
+          if (ok) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } else {
+            window.prompt("Copie o link da TV:", url);
+          }
+        });
+      }}
+    >
+      {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+      {copied ? "Link copiado" : "Copiar link da TV"}
+    </Button>
+  );
+}
+
+// Cover do card — pedido explícito: "coloque cover image ou preview no lugar da cover imagem".
+// Tela não tem um campo de imagem de capa próprio (não é um recurso de mídia), então a capa É o
+// preview ao vivo da própria saída; por padrão mostra só um retângulo neutro com o ícone de TV
+// (equivalente a "sem capa"), e vira o iframe de verdade só quando o operador pede — mount-on-
+// demand de propósito, preservado do preview antigo: cada preview aberto é uma página de saída
+// inteira rodando (SSE + polling próprios, ver output-canvas.tsx), não algo pra manter sempre
+// ativo pra cada card da grade. Dimensão de design da view de saída é 1280×720 (16:9) — como agora
+// a capa ocupa a largura inteira do card (responsiva, varia por breakpoint), o fator de escala é
+// medido de verdade via ResizeObserver em vez de uma largura de caixa fixa como antes.
+const PREVIEW_DESIGN_WIDTH = 1280;
+const PREVIEW_DESIGN_HEIGHT = 720;
+
+function useElementWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, width] as const;
+}
+
+function OutputCoverPreview({ token }: { token: string }) {
+  const [open, setOpen] = useState(false);
+  const [containerRef, width] = useElementWidth();
+  const scale = width > 0 ? width / PREVIEW_DESIGN_WIDTH : 0;
+
+  return (
+    <div
+      // Só -mt (cancela o py do Card) — Card não tem padding horizontal próprio (só as seções
+      // internas — CardHeader/CardContent/CardFooter — têm px), então a capa já nasce com a
+      // largura cheia do card sem precisar de -mx nenhum; overflow-hidden + rounded-xl do Card
+      // arredondam o topo automaticamente, mesmo racional do has-[>img:first-child]:pt-0 que o
+      // componente já prevê pra uma imagem de capa de verdade.
+      ref={containerRef}
+      className="relative -mt-(--card-spacing) aspect-video overflow-hidden bg-muted"
+    >
+      {open && scale > 0 ? (
+        <>
+          <iframe
+            src={`/broadcast/out/${token}`}
+            title="Preview da tela"
+            style={{
+              width: PREVIEW_DESIGN_WIDTH,
+              height: PREVIEW_DESIGN_HEIGHT,
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+              border: 0,
+              pointerEvents: "none",
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="absolute top-2 right-2 bg-card/90"
+            onClick={() => setOpen(false)}
+            aria-label="Fechar preview"
+          >
+            <EyeOff className="size-4" />
+          </Button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex size-full flex-col items-center justify-center gap-1.5 text-muted-foreground ui-motion-base hover:bg-accent/10 hover:text-foreground"
+        >
+          <Tv className="size-8" aria-hidden="true" />
+          <span className="text-xs font-medium">Ver preview</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Troca ao selecionar — pedido explícito: "não vejo razão de ter um botão 'trocar'". Escrevendo
+// direto no ref do input escondido (não via bubble input do próprio Select) antes de
+// requestSubmit(), mesmo padrão de SortablePlaylistItems (playlists-section.tsx): evita depender
+// da ordem entre o efeito interno do Radix e o submit, que poderia disparar antes do valor novo
+// realmente estar no DOM.
+function SetOutputPlaylistForm({
+  output,
+  playlists,
+  currentPlaylistId,
+  onPlaylistChange,
+}: {
+  output: BroadcastOutputRecord;
+  playlists: BroadcastPlaylistRecord[];
+  // Estado otimista mantido pelo OutputCard (pai) — o <Select> é controlado por ele pra que a troca
+  // reflita no card inteiro (badge "Playlist:", faixa de status) na hora, sem revalidatePath.
+  currentPlaylistId: string | null;
+  onPlaylistChange: (playlistId: string | null) => void;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const playlistIdInputRef = useRef<HTMLInputElement>(null);
+  // Valor pra onde voltar se a action falhar (o id de antes deste clique).
+  const revertToRef = useRef(currentPlaylistId);
+
+  const [state, formAction, pending] = useActionState(setOutputPlaylistAction, playlistInitialState);
+  useActionToast({
+    pending,
+    error: state.error,
+    successMessage: "Playlist trocada.",
+    onError: () => onPlaylistChange(revertToRef.current),
+  });
+
+  function handleChange(playlistId: string) {
+    revertToRef.current = currentPlaylistId;
+    onPlaylistChange(playlistId); // otimista: card reflete já; a action ecoa o mesmo id no sucesso
+    if (playlistIdInputRef.current) playlistIdInputRef.current.value = playlistId;
+    formRef.current?.requestSubmit();
+  }
+
+  return (
+    <form ref={formRef} action={formAction}>
+      <input type="hidden" name="outputId" value={output.id} />
+      <input type="hidden" name="playlistId" ref={playlistIdInputRef} defaultValue={currentPlaylistId ?? ""} />
+      <Select value={currentPlaylistId ?? undefined} onValueChange={handleChange} disabled={pending}>
+        <SelectTrigger className="w-full"><SelectValue placeholder="Escolha uma playlist..." /></SelectTrigger>
+        <SelectContent>
+          {playlists.map((playlist) => (
+            <SelectItem key={playlist.id} value={playlist.id}>{playlist.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </form>
+  );
+}
+
+type LayerTone = "primary" | "accent" | "warning";
+
+const LAYER_TONE_ICON_CLASSNAME: Record<LayerTone, string> = {
+  primary: "bg-primary/14 text-primary",
+  accent: "bg-accent/14 text-accent",
+  warning: "bg-warning-soft text-warning",
+};
+
+// data-checked:bg-primary já é o default do Switch (switch.tsx) — sem override pra esse tom.
+const LAYER_TONE_SWITCH_CLASSNAME: Record<LayerTone, string> = {
+  primary: "",
+  accent: "data-checked:bg-accent",
+  warning: "data-checked:bg-warning",
+};
+
+// Uma linha por camada (agenda/rodapé/ticker), todas com a MESMA estrutura — ícone + nome +
+// descrição do que aquilo faz + Switch — pedido explícito: "a seção de camadas tem um contexto bom,
+// mas os botões não conversam entre si" (antes eram três botões-pílula com cores/tamanhos
+// diferentes, cada um "gritando" sozinho). Agora é uma lista única, cada linha só troca de ícone/
+// cor/texto — o mesmo padrão se repetindo é o que faz elas "conversarem". Switch em vez de botão
+// texto+ícone: pedido explícito "vamos evitar inputs diretos" — um Switch já entrega ligado/
+// desligado sem precisar ler texto nenhum. Clique dobrado ignorado via pendingRef, mesmo padrão de
+// AdminNavSwitch (src/themes/*/components/AdminNavSwitch.tsx); <label htmlFor> aponta só pro
+// Switch (não envolve ícone+Switch) pelo mesmo motivo documentado lá — Radix Switch renderiza
+// botão + checkbox oculto como irmãos, dois elementos "labelable" no mesmo <label> é ambíguo.
+function LayerToggleRow({
+  output,
+  action,
+  fieldName,
+  checked: serverChecked,
+  iconOn,
+  iconOff,
+  label,
+  description,
+  tone,
+  onCheckedChange,
+}: {
+  output: BroadcastOutputRecord;
+  // A action devolve BroadcastOutputToggleState (saída atualizada) e NÃO chama revalidatePath — o
+  // Switch reflete o clique na hora e reconcilia com o registro devolvido. Ver actions.ts.
+  action: (state: BroadcastActionState, formData: FormData) => Promise<BroadcastOutputToggleState>;
+  fieldName: "drawerOpen" | "footerOpen" | "tickerEnabled" | "offline";
+  checked: boolean;
+  iconOn: ReactNode;
+  iconOff: ReactNode;
+  label: string;
+  description: string;
+  tone: LayerTone;
+  onCheckedChange?: (checked: boolean) => void;
+}) {
+  // Estado do Switch: otimista no clique, confirmado pelo fim da action. Sem revalidatePath, então
+  // uma revalidação estrutural (create/delete/reorder ainda recarregam a página) volta a mandar
+  // via `key` no OutputCard, que remonta esta linha com o `serverChecked` novo.
+  const [checked, setChecked] = useState(serverChecked);
+  // Valor pra onde voltar se a action falhar (o valor de antes deste clique).
+  const revertToRef = useRef(serverChecked);
+  const pendingRef = useRef(false);
+
+  function applyChecked(next: boolean) {
+    setChecked(next);
+    onCheckedChange?.(next);
+  }
+
+  const [state, formAction, pending] = useActionState(action, outputToggleInitialState);
+  useActionToast({
+    pending,
+    error: state.error,
+    successMessage: "Atualizado.",
+    onSuccess: () => {
+      pendingRef.current = false;
+    },
+    onError: () => {
+      pendingRef.current = false;
+      applyChecked(revertToRef.current);
+    },
+  });
+  const formRef = useRef<HTMLFormElement>(null);
+  const valueInputRef = useRef<HTMLInputElement>(null);
+  const id = useId();
+
+  function handleChange(next: boolean) {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    revertToRef.current = checked;
+    if (valueInputRef.current) valueInputRef.current.value = next ? "true" : "false";
+    applyChecked(next);
+    formRef.current?.requestSubmit();
+  }
+
+  return (
+    <form ref={formRef} action={formAction} className="bg-card p-3">
+      <input type="hidden" name="outputId" value={output.id} />
+      <input type="hidden" name={fieldName} ref={valueInputRef} defaultValue={serverChecked ? "false" : "true"} />
+      <div className="flex items-center gap-2.5">
+        <span
+          className={`flex size-8 shrink-0 items-center justify-center rounded-full ${checked ? LAYER_TONE_ICON_CLASSNAME[tone] : "bg-muted text-muted-foreground"}`}
+        >
+          {checked ? iconOn : iconOff}
+        </span>
+        <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
+          <span className="block text-sm font-medium text-foreground">{label}</span>
+          <span className="block truncate text-xs text-muted-foreground">{description}</span>
+        </label>
+        <Switch
+          id={id}
+          checked={checked}
+          onCheckedChange={handleChange}
+          disabled={pending}
+          className={LAYER_TONE_SWITCH_CLASSNAME[tone]}
+          aria-label={label}
+        />
+      </div>
+    </form>
+  );
+}
+
+function formatMinutesSeconds(totalSeconds: number): string {
+  if (totalSeconds <= 0) return "desligado";
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  if (seconds === 0) return `${minutes} min`;
+  return `${minutes} min ${seconds}s`;
+}
+
+const SCHEDULE_MAX_SECONDS = 600;
+const SCHEDULE_STEP_SECONDS = 15;
+
+// Ciclo fixo de abrir/pausar a coluna lateral — pedido explícito: "quero escolher quando essa
+// pausa acontece [...] deixar a agenda aberta por uns 3 min, depois 1 min de pausa" (correção de
+// uma 1ª versão que pausava depois de CADA agenda individual, sem controle sobre quando). Slider em
+// vez de campo numérico — pedido explícito: "no lugar de um input de texto para segundos, talvez
+// um slider" — arrastar e soltar já salva sozinho (onValueCommit), sem precisar de um botão
+// "Salvar" à parte.
+//
+// Os dois campos continuam formando um par — só um preenchido não liga o ciclo, o server rejeita
+// (ver set-output-agenda-schedule/service.ts). Com um <input type="number"> isso não travava nada
+// (dava pra digitar os dois antes de clicar em "Salvar"); com dois sliders que salvam sozinhos ao
+// soltar, ARRASTAR SÓ UM já dispara o commit sozinho, com o outro ainda em zero — impossível
+// configurar o par assim (bug real reportado: "tento colocar um valor [...] diz que preciso
+// definir os dois ao mesmo tempo, o que é impossível"). Por isso commit() só chama requestSubmit()
+// quando o PAR resultante já é válido (os dois em zero, ou os dois > 0); um valor sozinho só
+// atualiza o número mostrado (via onValueChange) e espera o outro slider completar o par — a dica
+// abaixo avisa qual dos dois ainda falta.
+function SetOutputAgendaScheduleForm({ output }: { output: BroadcastOutputRecord }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const openInputRef = useRef<HTMLInputElement>(null);
+  const pauseInputRef = useRef<HTMLInputElement>(null);
+  const [openSeconds, setOpenSeconds] = useState(output.agendaOpenSeconds ?? 0);
+  const [pauseSeconds, setPauseSeconds] = useState(output.agendaPauseSeconds ?? 0);
+  // Últimos valores confirmados pelo server — pra onde os sliders voltam se um commit falhar (sem
+  // revalidatePath, o prop `output` não recarrega sozinho; revalidação estrutural remonta via `key`
+  // no OutputCard). Atualizado no commit: os valores enviados viram o novo "confirmado" assim que a
+  // action responde sem erro.
+  const confirmedRef = useRef({ open: output.agendaOpenSeconds ?? 0, pause: output.agendaPauseSeconds ?? 0 });
+  const sentRef = useRef({ open: output.agendaOpenSeconds ?? 0, pause: output.agendaPauseSeconds ?? 0 });
+
+  const [state, formAction, pending] = useActionState(setOutputAgendaScheduleAction, outputToggleInitialState);
+  useActionToast({
+    pending,
+    error: state.error,
+    successMessage: "Ciclo da agenda atualizado.",
+    onSuccess: () => {
+      confirmedRef.current = sentRef.current;
+    },
+    onError: () => {
+      setOpenSeconds(confirmedRef.current.open);
+      setPauseSeconds(confirmedRef.current.pause);
+    },
+  });
+
+  function commit(nextOpen: number, nextPause: number) {
+    const pairIsValid = (nextOpen > 0) === (nextPause > 0);
+    if (!pairIsValid) return;
+    sentRef.current = { open: nextOpen, pause: nextPause };
+    if (openInputRef.current) openInputRef.current.value = nextOpen > 0 ? String(nextOpen) : "";
+    if (pauseInputRef.current) pauseInputRef.current.value = nextPause > 0 ? String(nextPause) : "";
+    formRef.current?.requestSubmit();
+  }
+
+  const hint =
+    openSeconds > 0 && pauseSeconds === 0
+      ? "Falta ajustar a pausa pra ativar o ciclo."
+      : openSeconds === 0 && pauseSeconds > 0
+        ? "Falta ajustar quanto tempo fica aberta pra ativar o ciclo."
+        : "Deixe os dois em “desligado” pra não pausar — a agenda roda contínua.";
+  const hintIsIncomplete = (openSeconds > 0) !== (pauseSeconds > 0);
+
+  return (
+    <form ref={formRef} action={formAction} className="space-y-3">
+      <input type="hidden" name="outputId" value={output.id} />
+      <input type="hidden" name="agendaOpenSeconds" ref={openInputRef} defaultValue={output.agendaOpenSeconds ?? ""} />
+      <input type="hidden" name="agendaPauseSeconds" ref={pauseInputRef} defaultValue={output.agendaPauseSeconds ?? ""} />
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Agenda aberta por</span>
+          <span className="font-medium text-foreground">{formatMinutesSeconds(openSeconds)}</span>
+        </div>
+        <Slider
+          value={[openSeconds]}
+          max={SCHEDULE_MAX_SECONDS}
+          step={SCHEDULE_STEP_SECONDS}
+          disabled={pending}
+          onValueChange={([value]) => setOpenSeconds(value)}
+          onValueCommit={([value]) => commit(value, pauseSeconds)}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Depois, pausa por</span>
+          <span className="font-medium text-foreground">{formatMinutesSeconds(pauseSeconds)}</span>
+        </div>
+        <Slider
+          value={[pauseSeconds]}
+          max={SCHEDULE_MAX_SECONDS}
+          step={SCHEDULE_STEP_SECONDS}
+          disabled={pending}
+          onValueChange={([value]) => setPauseSeconds(value)}
+          onValueCommit={([value]) => commit(openSeconds, value)}
+        />
+      </div>
+      <p className={`text-xs ${hintIsIncomplete ? "font-medium text-warning" : "text-muted-foreground"}`}>{hint}</p>
+    </form>
+  );
+}
+
+// Agrupa os três liga/desliga de camada numa única lista — pedido explícito: "crie contexto:
+// botões de abrir/fechar e ativar/desativar" (antes, agenda ficava solta no corpo do card e
+// rodapé/ticker ficavam escondidos dentro de "Mais opções", sem nada explicando que os três são a
+// mesma categoria de controle: o que aparece OU NÃO na tela). O ciclo de pausa da agenda aparece
+// encaixado logo abaixo da própria linha "Agenda" (não solto no card) — só faz sentido com a
+// agenda aberta, por isso continua condicional a drawerOpen.
+function OutputLayersSection({ output }: { output: BroadcastOutputRecord }) {
+  // Espelha o estado otimista do toggle "Agenda" só pra revelar/esconder o ciclo de pausa na hora
+  // (LayerToggleRow reporta via onCheckedChange) — sem revalidatePath, o prop output.drawerOpen não
+  // muda sozinho depois do clique. Revalidação estrutural remonta via `key` no OutputCard.
+  const [drawerOpen, setDrawerOpen] = useState(output.drawerOpen);
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Camadas exibidas na tela</p>
+        <p className="text-xs text-muted-foreground">Além do vídeo, o que mais aparece nesta tela.</p>
+      </div>
+      <div className="divide-y divide-border/60 overflow-hidden rounded-panel border border-border">
+        <LayerToggleRow
+          output={output}
+          action={setOutputDrawerAction}
+          fieldName="drawerOpen"
+          checked={output.drawerOpen}
+          onCheckedChange={setDrawerOpen}
+          iconOn={<PanelRightClose className="size-4" />}
+          iconOff={<PanelRightOpen className="size-4" />}
+          label="Agenda"
+          description="Coluna lateral com os próximos eventos"
+          tone="primary"
+        />
+        {drawerOpen && (
+          <div className="bg-muted/20 p-3 pl-13">
+            <SetOutputAgendaScheduleForm output={output} />
+          </div>
+        )}
+        <LayerToggleRow
+          output={output}
+          action={setOutputFooterAction}
+          fieldName="footerOpen"
+          checked={output.footerOpen}
+          iconOn={<PanelBottomClose className="size-4" />}
+          iconOff={<PanelBottomOpen className="size-4" />}
+          label="Rodapé"
+          description="Logo, relógio, data e temperatura"
+          tone="accent"
+        />
+        <LayerToggleRow
+          output={output}
+          action={setOutputTickerAction}
+          fieldName="tickerEnabled"
+          checked={output.tickerEnabled}
+          iconOn={<ScrollText className="size-4" />}
+          iconOff={<ScrollText className="size-4" />}
+          label="Ticker"
+          description="Texto da agenda rolando no rodapé"
+          tone="warning"
+        />
+      </div>
+    </div>
+  );
+}
+
+// "Tela offline" (Fase 11) — chave mestra separada das camadas acima: liga uma tela de espera
+// branded no lugar do conteúdo inteiro, não é "mais uma camada". Reaproveita LayerToggleRow (mesmo
+// padrão otimista, sem revalidatePath — a TV troca via SSE), só numa lista própria com o rótulo/
+// contexto deixando claro o efeito (pedido explícito: "deixar claro o efeito na UI").
+function OutputStandbySection({ output }: { output: BroadcastOutputRecord }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Exibição</p>
+        <p className="text-xs text-muted-foreground">
+          Com a tela offline, a TV mostra uma tela de espera com a marca do site — não o conteúdo.
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-panel border border-border">
+        <LayerToggleRow
+          output={output}
+          action={setOutputOfflineAction}
+          fieldName="offline"
+          checked={output.offline}
+          iconOn={<PowerOff className="size-4" />}
+          iconOff={<Power className="size-4" />}
+          label="Tela offline"
+          description="Mostra uma tela de espera branded, não o conteúdo"
+          tone="warning"
+        />
+      </div>
+    </div>
+  );
+}
+
+// PIN opcional de acesso à view pública — texto plano (ver set-output-pin/service.ts pro racional
+// da decisão), null quando não configurado. Submeter vazio remove a proteção (setOutputPinAction
+// trata "" como null); pedido explícito: "as views devem ser todas públicas [...] protegidas por
+// PIN (pin cadastrado nas opções da view)".
+function SetOutputPinForm({
+  output,
+  isProtected,
+  onSaved,
+}: {
+  output: BroadcastOutputRecord;
+  isProtected: boolean;
+  onSaved: (pin: string | null) => void;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const pinInputRef = useRef<HTMLInputElement>(null);
+
+  const [state, formAction, pending] = useActionState(setOutputPinAction, outputToggleInitialState);
+  // Sem revalidatePath — no sucesso, o painel colorido (OutputPinSection) reflete o novo estado a
+  // partir do valor digitado, e o campo é limpo pra não parecer que o PIN continua na fila.
+  useActionToast({
+    pending,
+    error: state.error,
+    successMessage: "PIN atualizado.",
+    onSuccess: () => {
+      onSaved(pinInputRef.current?.value?.trim() || null);
+      formRef.current?.reset();
+    },
+  });
+
+  return (
+    <form ref={formRef} action={formAction} className="flex flex-col items-start gap-2">
+      <input type="hidden" name="outputId" value={output.id} />
+      <Input
+        ref={pinInputRef}
+        name="pin"
+        type="text"
+        placeholder={isProtected ? "Trocar PIN..." : "Criar um PIN..."}
+        className="w-32 bg-card"
+      />
+      <Button type="submit" size="sm" variant={isProtected ? "outline" : "default"} disabled={pending}>Salvar</Button>
+    </form>
+  );
+}
+
+// Sem form/onSubmit próprio — ConfirmDeleteButton já embute o formulário escondido + o
+// AlertDialog de confirmação (pedido explícito: "a confirmação não deve ser pela confirmação
+// nativa do navegador"). Ícone de lixeira no canto superior direito do painel — pedido explícito:
+// "o botão Remover não está conversando [...] use o ícone de lixeira e posicione no canto superior
+// direito" — mesmo lugar/estilo do botão de apagar tela no cabeçalho do card e do "Fechar preview"
+// da capa, em vez de um botão de texto solto ao lado do campo.
+function RemoveOutputPinButton({ outputId, onRemoved }: { outputId: string; onRemoved: () => void }) {
+  return (
+    <ConfirmDeleteButton
+      action={setOutputPinAction}
+      fields={{ outputId, pin: "" }}
+      title="Remover PIN"
+      description="Remover a proteção por PIN desta tela? Ela volta a ficar pública."
+      confirmLabel="Remover"
+      successMessage="PIN removido."
+      icon={<Trash2 className="size-4" />}
+      label="Remover PIN"
+      variant="ghost"
+      className="absolute top-2 right-2"
+      onSuccess={onRemoved}
+    />
+  );
+}
+
+function DeleteOutputButton({ outputId }: { outputId: string }) {
+  return (
+    <ConfirmDeleteButton
+      action={deleteOutputAction}
+      fields={{ outputId }}
+      title="Apagar tela"
+      description="Apagar esta tela? O link que ela usa para de funcionar."
+      successMessage="Saída apagada."
+      icon={<Trash2 className="size-4" />}
+      label="Apagar tela"
+    />
+  );
+}
+
+// Global (não por saída) — aparece em toda saída, e some sozinho quando a duração passa; "Remover
+// agora" força isso antes do tempo, se precisar.
+function QuickAlertPanel() {
+  const publishFormRef = useRef<HTMLFormElement>(null);
+  const [publishState, publishFormAction, publishPending] = useActionState(publishAlertAction, initialState);
+  // Sem revalidatePath (a TV reage via SSE) — limpa o campo no sucesso pra não parecer que a
+  // mensagem já publicada continua na fila.
+  useActionToast({
+    pending: publishPending,
+    error: publishState.error,
+    successMessage: "Aviso publicado.",
+    onSuccess: () => publishFormRef.current?.reset(),
+  });
+
+  const [clearState, clearFormAction, clearPending] = useActionState(clearAlertAction, initialState);
+  useActionToast({ pending: clearPending, error: clearState.error, successMessage: "Aviso removido." });
+
+  return (
+    <div className="space-y-2 rounded-panel border border-border bg-card p-3">
+      <p className="text-sm font-medium text-foreground">Aviso rápido</p>
+      <p className="text-xs text-muted-foreground">
+        Aparece em cima do conteúdo (empurrando, sem cobrir nada) em qualquer tela, e some sozinho depois do tempo.
+      </p>
+      <form ref={publishFormRef} action={publishFormAction} className="flex flex-wrap items-end gap-2">
+        <div className="min-w-64 flex-1 space-y-1">
+          <label className="text-xs text-muted-foreground" htmlFor="alert-message">Mensagem</label>
+          <Input id="alert-message" name="message" placeholder="Reunião às 15h no auditório" required />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground" htmlFor="alert-duration">Segundos na tela</label>
+          <Input id="alert-duration" name="durationSeconds" type="number" defaultValue={30} className="w-24" />
+        </div>
+        <Button type="submit" disabled={publishPending}>Publicar aviso</Button>
+      </form>
+      <form action={clearFormAction}>
+        <Button type="submit" variant="outline" size="sm" disabled={clearPending}>Remover agora</Button>
+      </form>
+    </div>
+  );
+}
+
+// Resumo "o que esta tela consome" — pedido explícito: "Rota mais clara: Hoje temos Agenda e
+// Playlist que é consumida em Tela". Antes só dava pra ver o vínculo tela↔agenda do lado da
+// AGENDA (AgendaOutputsForm em agenda-section.tsx); olhando pra uma tela não havia como saber
+// quais agendas a alimentam. playlistName vem do <Select> ao lado (currentPlaylistId já resolvido
+// por output); agendaNames vem de agendaNamesByOutputId (invertido a partir do vínculo
+// agenda→saída em page.tsx). O badge carrega o sinal de cor (playlist é o que decide se a tela
+// está "Pronta" — ver status.ts); a agenda é opcional, então só aparece como chip neutro, e só
+// quando existe (pedido: "indicações luminosas e coloridas" + "não quero informação jogada na
+// tela" — cada elemento aqui carrega um sinal, nenhum é só decoração).
+// connectedIps — pedido explícito: "vamos criar um sistema em que mostra também a quantidade de
+// TVs conectadas", depois "quero poder saber qual é a TV que conectou. Pode ser com o dado de IP
+// local" (ver getConnectedOutputIps, runtime/output-bus.ts). Continua visível mesmo com o card
+// fechado (é a mesma linha de OutputStatusRow, dentro do CardHeader — nunca escondida pelo
+// colapso), junto dos badges de playlist/agenda: verde quando pelo menos uma TV está com a tela
+// aberta agora, cinza quando nenhuma. A contagem no badge é a de CONEXÕES (cada aba/TV aberta
+// conta uma vez, mesmo que duas dividam o mesmo IP); a lista de IPs logo abaixo já vem sem
+// duplicata — é "de onde", não "quantas".
+// Badge do próprio "N TVs conectadas" vira o gatilho do dropdown — pedido explícito: "lista de
+// IPs deve aparecer com um dropdown do badge. Mostrar apenas o IP" (antes a lista ficava sempre
+// visível numa linha embaixo dos badges). DropdownMenuTrigger sem asChild já renderiza um <button>
+// de verdade em volta do que for passado como children — não precisa de wrapper próprio pro
+// StatusBadge (que é só um <span>) virar clicável. Sem conteúdo pra mostrar (nenhuma TV
+// conectada), o badge fica só informativo, sem virar gatilho de menu vazio.
+function ConnectedTvsBadge({ connectedIps }: { connectedIps: string[] }) {
+  const uniqueIps = [...new Set(connectedIps)].sort();
+  return (
+    <ListDropdownBadge
+      tone={connectedIps.length > 0 ? "success" : "muted"}
+      label={
+        <>
+          <Tv className="size-3" aria-hidden="true" />
+          {connectedIps.length} {connectedIps.length === 1 ? "TV conectada" : "TVs conectadas"}
+        </>
+      }
+      items={uniqueIps}
+      itemClassName="font-mono text-foreground"
+    />
+  );
+}
+
+function OutputStatusRow({
+  playlistName,
+  agendaNames,
+  connectedIps,
+}: {
+  playlistName: string | null;
+  agendaNames: string[];
+  connectedIps: string[];
+}) {
+  const status = outputItemStatus(Boolean(playlistName));
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <StatusBadge tone={status.tone}>{playlistName ? `Playlist: ${playlistName}` : status.label}</StatusBadge>
+      {agendaNames.length > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+          {agendaNames.length} {agendaNames.length === 1 ? "agenda" : "agendas"}
+        </span>
+      )}
+      <ConnectedTvsBadge connectedIps={connectedIps} />
+    </div>
+  );
+}
+
+// Painel sempre visível (não mais atrás de um disclosure) — pedido explícito: "faça algo mais
+// chamativo, colorido, que mostre a importância de colocar um PIN. Use ícone grande" — esconder
+// atrás de um "Mais opções" ia contra o pedido de dar destaque. A cor conta a história sozinha,
+// mesmo racional de status.ts: verde quando protegida, âmbar quando qualquer um com o link abre a
+// tela — o mesmo sinal "precisa de atenção" já usado nos badges de status, aqui em escala de card
+// inteiro em vez de badge pequeno.
+function OutputPinSection({ output }: { output: BroadcastOutputRecord }) {
+  // Estado otimista do PIN — sem revalidatePath, o painel reflete criar/trocar/remover na hora
+  // (SetOutputPinForm.onSaved / RemoveOutputPinButton.onRemoved). Revalidação estrutural remonta
+  // via `key` no OutputCard.
+  const [pin, setPin] = useState(output.pin);
+  const isProtected = Boolean(pin);
+
+  return (
+    <div
+      className={`relative flex items-start gap-3 rounded-panel border p-3 ${
+        isProtected ? "border-success-border bg-success-soft" : "border-warning-border bg-warning-soft"
+      }`}
+    >
+      {isProtected && <RemoveOutputPinButton outputId={output.id} onRemoved={() => setPin(null)} />}
+      {isProtected ? (
+        <ShieldCheck className="size-8 shrink-0 text-success" aria-hidden="true" />
+      ) : (
+        <ShieldAlert className="size-8 shrink-0 text-warning" aria-hidden="true" />
+      )}
+      <div className="min-w-0 flex-1 space-y-2 pr-8">
+        <div>
+          <p className={`text-sm font-semibold ${isProtected ? "text-success" : "text-warning"}`}>
+            {isProtected ? "Protegida com PIN" : "Tela sem proteção"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {isProtected
+              ? "Só quem souber o PIN consegue abrir esta tela no navegador."
+              : "Qualquer pessoa com o link abre esta tela. Considere proteger com um PIN."}
+          </p>
+        </div>
+        <SetOutputPinForm output={output} isProtected={isProtected} onSaved={setPin} />
+        {isProtected && <ResetOutputPinAttemptsButton outputId={output.id} />}
+      </div>
+    </div>
+  );
+}
+
+// "Liberar tentativas de PIN" — zera o limitador de brute force (runtime/pin-attempts.ts) desta
+// tela, todos os IPs de uma vez. Sempre visível quando a tela tem PIN (o contador é em memória, o
+// admin não tem como saber daqui se há um bloqueio ativo agora sem um poll dedicado — e o custo de
+// clicar sem bloqueio nenhum é zero). Não é destrutivo, então sem AlertDialog: um submit direto.
+function ResetOutputPinAttemptsButton({ outputId }: { outputId: string }) {
+  const [state, formAction, pending] = useActionState(resetOutputPinAttemptsAction, initialState);
+  useActionToast({ pending, error: state.error, successMessage: "Tentativas de PIN liberadas." });
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="outputId" value={outputId} />
+      <Button type="submit" size="sm" variant="ghost" disabled={pending} className="text-success">
+        Liberar tentativas de PIN
+      </Button>
+    </form>
+  );
+}
+
+// Um poll só pra todas as telas juntas (não um por card) — pedido explícito: "mostra também a
+// quantidade de TVs conectadas" + "quero poder saber qual é a TV que conectou". A leitura em si é
+// só um Map lido em memória (ver getConnectedOutputIps, runtime/output-bus.ts), então um intervalo
+// de 5s é reação rápida o bastante sem virar tráfego desnecessário; parado quando a aba não está
+// visível (evita poll com o admin em segundo plano).
+const CONNECTED_IPS_POLL_MS = 5000;
+
+function useConnectedOutputIps(): Record<string, string[]> {
+  const [ipsByToken, setIpsByToken] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      if (document.visibilityState !== "visible") return;
+      const result = await getConnectedOutputIpsAction();
+      if (!cancelled) setIpsByToken(result);
+    }
+
+    poll();
+    const interval = setInterval(poll, CONNECTED_IPS_POLL_MS);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, []);
+
+  return ipsByToken;
+}
+
+// Card fechável — pedido explícito: "o card de tela pode 'fechar', esconder todas as informações
+// mantendo apenas o Cover, Nome, badge de playlist e agenda [...] quando o card estiver fechado,
+// ainda deve aparecer o footer com o botão de copiar link". Fechado, só CardContent (playlist/
+// camadas/PIN) some; Cover+CardHeader (nome + status row) e o CardFooter (link) continuam de pé —
+// copiar o link da TV é a ação mais comum do card inteiro, faz sentido continuar alcançável mesmo
+// fechado. Estado só local (não persiste entre reloads) — é um jeito de reduzir ruído visual
+// olhando a grade inteira, não uma preferência de configuração da tela.
+function OutputCard({
+  output,
+  playlists,
+  currentPlaylistId,
+  agendaNames,
+  connectedIps,
+  canManageAll,
+}: {
+  output: BroadcastOutputRecord;
+  playlists: BroadcastPlaylistRecord[];
+  currentPlaylistId: string | null;
+  agendaNames: string[];
+  connectedIps: string[];
+  canManageAll: boolean;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  // Estado otimista da playlist da tela — a troca (SetOutputPlaylistForm) reflete no badge
+  // "Playlist:" e na faixa de status do card na hora, sem revalidatePath. Revalidação estrutural
+  // (create/delete/reorder) ainda recarrega a página e remonta o card via `key` (ver OutputsSection).
+  const [playlistId, setPlaylistId] = useState(currentPlaylistId);
+  const playlistName = playlists.find((playlist) => playlist.id === playlistId)?.name ?? null;
+  const status = outputItemStatus(Boolean(playlistName));
+
+  return (
+    <Card className={`gap-3 border-l-4 ${STATUS_BORDER_CLASSNAME[status.tone]}`}>
+      <OutputCoverPreview token={output.token} />
+      <CardHeader>
+        <CardTitle className="truncate">{output.name}</CardTitle>
+        <CardAction className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setCollapsed((previous) => !previous)}
+            aria-label={collapsed ? "Expandir tela" : "Recolher tela"}
+          >
+            {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+          </Button>
+          {canManageAll && <DeleteOutputButton outputId={output.id} />}
+        </CardAction>
+        <div className="mt-1">
+          <OutputStatusRow playlistName={playlistName} agendaNames={agendaNames} connectedIps={connectedIps} />
+        </div>
+      </CardHeader>
+      {/* Cada seção com rótulo + frase de contexto curta, separadas por divisor — pedido
+          explícito: "é difícil identificar o que é cada seção, qual é o contexto de cada
+          opção". */}
+      {!collapsed && (
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Playlist</p>
+            <p className="text-xs text-muted-foreground">O que esta tela reproduz em sequência.</p>
+            <SetOutputPlaylistForm
+              output={output}
+              playlists={playlists}
+              currentPlaylistId={playlistId}
+              onPlaylistChange={setPlaylistId}
+            />
+          </div>
+          <div className="border-t border-border/60 pt-4">
+            <OutputStandbySection output={output} />
+          </div>
+          <div className="border-t border-border/60 pt-4">
+            <OutputLayersSection output={output} />
+          </div>
+          <div className="border-t border-border/60 pt-4">
+            <OutputPinSection output={output} />
+          </div>
+        </CardContent>
+      )}
+      {/* Fica de pé mesmo com o card fechado — pedido explícito. Cor própria (primary sólido, em
+          vez do variant="outline" neutro de antes) pra deixar claro que é AQUI que se copia o
+          link, a ação mais comum do card inteiro; o fundo com tinta de primary reforça o mesmo
+          sinal na seção inteira, não só no botão. */}
+      <CardFooter className="border-t-primary/20 bg-primary/8">
+        <CopyOutputUrlButton token={output.token} />
+      </CardFooter>
+    </Card>
+  );
+}
+
+export function OutputsSection({
+  outputs,
+  playlists,
+  outputPlaylistById,
+  canManageAll = true,
+  agendaNamesByOutputId = {},
+}: {
+  outputs: BroadcastOutputRecord[];
+  playlists: BroadcastPlaylistRecord[];
+  outputPlaylistById: Record<string, string | null>;
+  // false pra um ator sem broadcast.manage (só broadcast.outputs.manage — "responsável" por
+  // telas específicas, ver page.tsx) — esconde aviso rápido e criar/apagar tela. Atribuição de
+  // responsáveis nunca aparece aqui — é exclusiva do Superadmin, ver responsibles-section.tsx.
+  canManageAll?: boolean;
+  agendaNamesByOutputId?: Record<string, string[]>;
+}) {
+  const connectedIpsByToken = useConnectedOutputIps();
+
+  return (
+    <div className="space-y-4">
+      {canManageAll && <QuickAlertPanel />}
+      {canManageAll && <CreateOutputForm playlists={playlists} />}
+      {outputs.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          {canManageAll ? "Nenhuma tela cadastrada ainda." : "Nenhuma tela foi atribuída a você ainda."}
+        </p>
+      )}
+      {/* Grid de cards (pedido explícito: "aplica um novo layout com cards em Telas") — mobile
+          primeiro (1 coluna), 2 a partir de sm, 3 a partir de xl (AGENTS.md seção 4). Cada card
+          ganha a mesma faixa colorida por tom (STATUS_BORDER_CLASSNAME) já usada nos cards grandes
+          da Visão Geral (admin-overview-nav.tsx) — o mesmo sinal, em dois lugares. items-start
+          evita o comportamento padrão do Grid (align-items: stretch) — sem isso, abrir um card
+          numa linha esticava os outros da mesma linha pra ficar do mesmo tamanho (mesmo colapsados
+          e sem conteúdo pra preencher aquele espaço), feio esteticamente; cada card agora só
+          ocupa a altura do próprio conteúdo. */}
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {outputs.map((output) => (
+          // key inclui updatedAt: os toggles de controle ao vivo NÃO revalidam a página (guardam
+          // estado otimista local), então o card só deve remontar — descartando esse estado — quando
+          // uma revalidação estrutural (create/delete/reorder/settings) traz um registro novo.
+          <OutputCard
+            key={`${output.id}:${output.updatedAt.getTime()}`}
+            output={output}
+            playlists={playlists}
+            currentPlaylistId={outputPlaylistById[output.id] ?? null}
+            agendaNames={agendaNamesByOutputId[output.id] ?? []}
+            connectedIps={connectedIpsByToken[output.token] ?? []}
+            canManageAll={canManageAll}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
