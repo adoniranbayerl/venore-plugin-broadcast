@@ -11,7 +11,7 @@ vi.mock("@venore/plugin-sdk/settings", () => ({
 }));
 
 const getBrandConfig = vi.fn();
-vi.mock("@venore/plugin-sdk", () => ({
+vi.mock("@venore/plugin-sdk/brand", () => ({
   getBrandConfig: (...args: unknown[]) => getBrandConfig(...args),
 }));
 
