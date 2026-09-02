@@ -1,7 +1,7 @@
 import path from "node:path";
 import { getMediaAsset } from "@venore/plugin-sdk/media";
 import { getSetting } from "@venore/plugin-sdk/settings";
-import { getBrandConfig } from "@venore/plugin-sdk";
+import { getBrandConfig } from "@venore/plugin-sdk/brand";
 import { resolveRegionNews } from "../../../runtime/region-news";
 import { resolveRegionWeather } from "../../../runtime/region-weather";
 import {

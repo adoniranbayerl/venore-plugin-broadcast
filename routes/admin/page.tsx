@@ -2,7 +2,7 @@ import { CalendarDays, ListVideo, Settings as SettingsIcon, Tv, Users } from "lu
 import { listUsers } from "@venore/plugin-sdk/auth";
 import { AdminAccessDenied } from "@venore/plugin-sdk/ui";
 import { AdminPageHeader } from "@venore/plugin-sdk/ui";
-import { getPluginAdminPageData } from "@venore/plugin-sdk";
+import { getPluginAdminPageData } from "@venore/plugin-sdk/admin";
 import {
   listAgendaEditors,
   listAgendaEvents,
