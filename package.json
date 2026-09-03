@@ -11,8 +11,8 @@
     "./migrations/*": "./migrations/*",
     "./package.json": "./package.json"
   },
+  "//": "@venore/plugin-sdk NÃO é peerDependency — resolve pelo alias de tsconfig do host (src/sdk), não pelo npm. Listar aqui faz o npm tentar baixar do registry.",
   "peerDependencies": {
-    "@venore/plugin-sdk": "*",
     "drizzle-orm": ">=0.45",
     "next": ">=16",
     "react": ">=19"
