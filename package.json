@@ -1,0 +1,28 @@
+{
+  "name": "@venore/plugin-broadcast",
+  "version": "1.0.0",
+  "description": "Broadcast Studio — composição de cenas em camadas com saída para TV (plugin do Venore Docks).",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./manifest": "./manifest.ts",
+    "./route-table": "./routes/route-table.ts",
+    "./migrations/*": "./migrations/*",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@venore/plugin-sdk": "*",
+    "drizzle-orm": ">=0.45",
+    "next": ">=16",
+    "react": ">=19"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10"
+  }
+}
