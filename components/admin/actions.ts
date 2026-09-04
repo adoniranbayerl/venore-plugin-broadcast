@@ -5,7 +5,6 @@ import {
   addAgendaEventPlaylistItem,
   addMediaAssetPlaylistItem,
   addMetricsBoardPlaylistItem,
-  addNewsPlaylistItem,
   addScannedPlaylistItems,
   addWebpagePlaylistItem,
   clearAlert,
@@ -170,13 +169,22 @@ export type ScanPlaylistFolderState = {
   toRemove: { id: string; relativePath: string }[];
 };
 
+// "video" (padrão) ou "image" — mesmo racional de PlaylistFolderScanKind (scan-playlist-folder/
+// types.ts). Um valor fora desse par (form adulterado) cai em "video", nunca quebra a action.
+function requireFolderScanKind(formData: FormData): "video" | "image" {
+  return formData.get("kind") === "image" ? "image" : "video";
+}
+
 export async function scanPlaylistFolderAction(
   _prevState: ScanPlaylistFolderState,
   formData: FormData,
 ): Promise<ScanPlaylistFolderState> {
   if (!(await isPluginActive("broadcast"))) return { error: PLUGIN_DISABLED_ERROR, toAdd: [], toRemove: [] };
 
-  const result = await scanPlaylistFolder({ playlistId: requireString(formData, "playlistId") });
+  const result = await scanPlaylistFolder({
+    playlistId: requireString(formData, "playlistId"),
+    kind: requireFolderScanKind(formData),
+  });
   if (!result.success) return { error: result.error.message, toAdd: [], toRemove: [] };
 
   return { error: null, toAdd: result.data.toAdd, toRemove: result.data.toRemove };
@@ -189,14 +197,15 @@ export async function addScannedPlaylistItemsAction(
   if (!(await isPluginActive("broadcast"))) return { error: PLUGIN_DISABLED_ERROR };
 
   const playlistId = requireString(formData, "playlistId");
+  const kind = requireFolderScanKind(formData);
   let relativePaths: string[];
   try {
     relativePaths = JSON.parse(String(formData.get("relativePaths") ?? "[]"));
   } catch {
-    return { error: "Seleção de vídeos inválida." };
+    return { error: "Seleção de itens inválida." };
   }
 
-  const result = await addScannedPlaylistItems({ playlistId, relativePaths });
+  const result = await addScannedPlaylistItems({ playlistId, kind, relativePaths });
   if (!result.success) return { error: result.error.message };
 
   revalidatePath(returnTo);
@@ -284,23 +293,6 @@ export async function updatePlaylistItemAction(
     durationSeconds: optionalNumber(formData, "durationSeconds"),
     url: requireString(formData, "url") || undefined,
     withAudio: formData.get("withAudio") === "on",
-  });
-  if (!result.success) return { error: result.error.message };
-
-  revalidatePath(returnTo);
-  return { error: null };
-}
-
-export async function addNewsPlaylistItemAction(
-  _prevState: BroadcastActionState,
-  formData: FormData,
-): Promise<BroadcastActionState> {
-  if (!(await isPluginActive("broadcast"))) return { error: PLUGIN_DISABLED_ERROR };
-
-  const result = await addNewsPlaylistItem({
-    playlistId: requireString(formData, "playlistId"),
-    title: requireString(formData, "title") || undefined,
-    durationSeconds: optionalNumber(formData, "durationSeconds"),
   });
   if (!result.success) return { error: result.error.message };
 

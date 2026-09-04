@@ -26,7 +26,7 @@ vi.mock("./service", () => ({
 }));
 
 const forbidden = { authorized: false as const, error: { code: "rbac.authorization.forbidden", message: "forbidden" } };
-const input = { playlistId: "playlist-1" };
+const input = { playlistId: "playlist-1", kind: "video" as const };
 
 describe("scanPlaylistFolderHandler", () => {
   beforeEach(() => {
@@ -71,7 +71,7 @@ describe("scanPlaylistFolderHandler", () => {
     const { scanPlaylistFolderHandler } = await import("./handler");
     const result = await scanPlaylistFolderHandler(input);
 
-    expect(scanPlaylistFolder).toHaveBeenCalledWith({ playlistId: "playlist-1", actorId: "editor-2" });
+    expect(scanPlaylistFolder).toHaveBeenCalledWith({ playlistId: "playlist-1", kind: "video", actorId: "editor-2" });
     expect(result).toEqual({ success: true, data: { toAdd: [], toRemove: [] } });
   });
 });

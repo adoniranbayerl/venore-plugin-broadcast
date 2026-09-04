@@ -1,17 +1,5 @@
+import { INVALID_WEBPAGE_ROUTE_MESSAGE, isValidInternalWebpageRoute } from "../../../shared/webpage-url";
 import type { AddWebpagePlaylistItemInput } from "./types";
-
-// Aceita tanto uma rota interna do próprio site ("/cursos") quanto uma URL absoluta http(s) — o
-// <iframe> na view de saída (Fase 4/5) usa o valor cru como src, então "rota" e "URL completa"
-// funcionam do mesmo jeito no browser.
-function isValidWebpageUrl(url: string): boolean {
-  if (url.startsWith("/")) return true;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 export function validateAddWebpagePlaylistItemInput(
   input: AddWebpagePlaylistItemInput,
@@ -19,11 +7,8 @@ export function validateAddWebpagePlaylistItemInput(
   if (!input.playlistId) {
     return { code: "broadcast.add-webpage-playlist-item.invalid_playlist", message: "Playlist inválida." };
   }
-  if (!input.url || !isValidWebpageUrl(input.url.trim())) {
-    return {
-      code: "broadcast.add-webpage-playlist-item.invalid_url",
-      message: 'Informe uma URL completa (https://...) ou uma rota interna começando com "/".',
-    };
+  if (!input.url || !isValidInternalWebpageRoute(input.url.trim())) {
+    return { code: "broadcast.add-webpage-playlist-item.invalid_url", message: INVALID_WEBPAGE_ROUTE_MESSAGE };
   }
   if (input.durationSeconds !== undefined && input.durationSeconds !== null && !(input.durationSeconds > 0)) {
     return {

@@ -18,10 +18,18 @@ export function streamableContentTypeForExtension(extension: string): string | n
   return BROADCAST_STREAMABLE_CONTENT_TYPE_BY_EXTENSION[extension.toLowerCase()] ?? null;
 }
 
-// Usado só pelo scan de pasta (scan-playlist-folder) — imagem tem seu próprio fluxo dedicado
-// (biblioteca de mídia, MediaPickerField), então a pasta varrida automaticamente só traz vídeo,
-// pra não confundir o operador sobre de onde cada tipo de item vem.
+// Usado pelo scan de pasta (scan-playlist-folder) quando kind="video" — separado de imagem
+// deliberadamente (pastas diferentes, BROADCAST_VIDEOS_FOLDER_PATH vs BROADCAST_IMAGES_FOLDER_PATH
+// em shared/settings.ts) pra não misturar os dois tipos numa varredura só.
 export function isVideoExtension(extension: string): boolean {
   const contentType = streamableContentTypeForExtension(extension);
   return contentType !== null && contentType.startsWith("video/");
+}
+
+// Mesmo racional de isVideoExtension, usado quando kind="image" — pedido explícito: "Vídeos da
+// pasta, vamos fazer algo similar para 'Imagens na pasta'" (reverte a separação anterior que
+// mandava imagem só pela biblioteca de mídia).
+export function isImageExtension(extension: string): boolean {
+  const contentType = streamableContentTypeForExtension(extension);
+  return contentType !== null && contentType.startsWith("image/");
 }

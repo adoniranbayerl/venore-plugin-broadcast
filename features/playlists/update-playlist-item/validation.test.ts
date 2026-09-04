@@ -20,8 +20,11 @@ describe("validateUpdatePlaylistItemInput", () => {
     expect(validateUpdatePlaylistItemInput({ itemId: "item-1", url: "/cursos" })).toBeNull();
   });
 
-  it("accepts a valid absolute url", () => {
-    expect(validateUpdatePlaylistItemInput({ itemId: "item-1", url: "https://example.com" })).toBeNull();
+  // Pedido explícito: "APENAS ROTAS DO DOMINIO podem ser adicionadas. Nunca sites externos".
+  it("rejects an absolute url", () => {
+    expect(validateUpdatePlaylistItemInput({ itemId: "item-1", url: "https://example.com" })?.code).toBe(
+      "broadcast.update-playlist-item.invalid_url",
+    );
   });
 
   it("rejects a malformed url", () => {

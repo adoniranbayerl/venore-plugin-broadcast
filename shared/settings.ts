@@ -16,6 +16,15 @@ export const BROADCAST_ROOT_FOLDER = "public/broadcast";
 // desnecessário, a pasta sempre vai ser public/broadcast/videos".
 export const BROADCAST_VIDEOS_FOLDER_PATH = "videos";
 
+// Pasta irmã de BROADCAST_VIDEOS_FOLDER_PATH, mesmo racional — pedido explícito: "Vídeos da pasta,
+// vamos fazer algo similar para 'Imagens na pasta', porque aí eu só jogo na pasta a imagem".
+// Diferente de vídeo, NÃO é lida de playlist.folderPath (essa coluna só existe pro caso vídeo,
+// sempre "videos") — o scan de imagem (kind: "image" em scan-playlist-folder/add-scanned-
+// playlist-items) usa esta constante direto. Igual public/broadcast/videos, esta pasta não é
+// versionada neste repo — o operador cria public/broadcast/images/ manualmente no disco do
+// servidor e joga as imagens lá.
+export const BROADCAST_IMAGES_FOLDER_PATH = "images";
+
 // Chave/default de contexts/settings pro plugin — única fonte de verdade, usada tanto por
 // manifest.ts (registro do default via registerDefaultSetting, ver register-plugins.ts) quanto
 // pela tela admin de configuração. Mesmo padrão de shared/appearance.ts do birthdays.

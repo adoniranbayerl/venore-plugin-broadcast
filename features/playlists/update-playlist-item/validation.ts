@@ -1,15 +1,5 @@
+import { INVALID_WEBPAGE_ROUTE_MESSAGE, isValidInternalWebpageRoute } from "../../../shared/webpage-url";
 import type { UpdatePlaylistItemInput } from "./types";
-
-// Mesma regra de add-webpage-playlist-item: rota interna ("/cursos") ou URL http(s) completa.
-function isValidWebpageUrl(url: string): boolean {
-  if (url.startsWith("/")) return true;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 export function validateUpdatePlaylistItemInput(input: UpdatePlaylistItemInput): { code: string; message: string } | null {
   if (!input.itemId) {
@@ -18,11 +8,8 @@ export function validateUpdatePlaylistItemInput(input: UpdatePlaylistItemInput):
   if (input.durationSeconds !== undefined && input.durationSeconds !== null && !(input.durationSeconds > 0)) {
     return { code: "broadcast.update-playlist-item.invalid_duration", message: "A duração precisa ser um número maior que zero." };
   }
-  if (input.url !== undefined && input.url !== null && input.url !== "" && !isValidWebpageUrl(input.url)) {
-    return {
-      code: "broadcast.update-playlist-item.invalid_url",
-      message: 'Informe uma URL completa (https://...) ou uma rota interna começando com "/".',
-    };
+  if (input.url !== undefined && input.url !== null && input.url !== "" && !isValidInternalWebpageRoute(input.url)) {
+    return { code: "broadcast.update-playlist-item.invalid_url", message: INVALID_WEBPAGE_ROUTE_MESSAGE };
   }
   return null;
 }

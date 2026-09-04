@@ -1,20 +1,25 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { beginOperation, endOperation } from "@venore/plugin-sdk/observability";
-import { BROADCAST_ROOT_FOLDER } from "../../../shared/settings";
+import { BROADCAST_IMAGES_FOLDER_PATH, BROADCAST_ROOT_FOLDER } from "../../../shared/settings";
 import { normalizePlaylistFolderPath, resolveWithinRoot } from "../../../shared/sandboxed-path";
-import { isVideoExtension } from "../../../shared/video-extensions";
+import { isImageExtension, isVideoExtension } from "../../../shared/video-extensions";
 import { findMaxPlaylistItemOrder, findPlaylistById, insertLocalPlaylistItems } from "./store";
 import type { AddScannedPlaylistItemsCommand, AddScannedPlaylistItemsResult } from "./types";
 
 // Nunca confia cegamente na lista de relativePath vinda do client, mesmo tendo saído de um scan
-// (scan-playlist-folder) recente — reconfere que cada um: está dentro da pasta configurada desta
-// playlist (não só da raiz), tem extensão de vídeo válida, e o arquivo ainda existe no disco
-// (pode ter sumido entre o scan e a confirmação). Mesma defesa em profundidade de
+// (scan-playlist-folder) recente — reconfere que cada um: está dentro da pasta certa pro `kind`
+// (não só da raiz), tem extensão válida pro `kind`, e o arquivo ainda existe no disco (pode ter
+// sumido entre o scan e a confirmação). Mesma defesa em profundidade de
 // resolve-streamable-playlist-item.
+//
+// kind="video" continua lendo playlist.folderPath (sempre BROADCAST_VIDEOS_FOLDER_PATH hoje);
+// kind="image" usa BROADCAST_IMAGES_FOLDER_PATH direto, independente dessa coluna — mesmo racional
+// de scan-playlist-folder/service.ts.
 export async function addScannedPlaylistItems(command: AddScannedPlaylistItemsCommand): Promise<AddScannedPlaylistItemsResult> {
   const playlist = await findPlaylistById(command.playlistId);
-  if (!playlist || !playlist.folderPath) {
+  const folderPath = command.kind === "video" ? playlist?.folderPath : BROADCAST_IMAGES_FOLDER_PATH;
+  if (!playlist || !folderPath) {
     return {
       success: false,
       error: { code: "broadcast.add-scanned-playlist-items.invalid_playlist", message: "Playlist inválida." },
@@ -24,11 +29,12 @@ export async function addScannedPlaylistItems(command: AddScannedPlaylistItemsCo
   // normalizePlaylistFolderPath também aqui (não só em create-playlist) — defesa em profundidade
   // pra uma playlist com folderPath salvo antes do fix (barra sobrando) continuar funcionando sem
   // precisar de migração manual.
-  const normalizedFolderPath = normalizePlaylistFolderPath(playlist.folderPath);
+  const normalizedFolderPath = normalizePlaylistFolderPath(folderPath);
+  const matchesExtension = command.kind === "video" ? isVideoExtension : isImageExtension;
   const validRelativePaths: string[] = [];
   for (const relativePath of command.relativePaths) {
-    const withinPlaylistFolder = relativePath === normalizedFolderPath || relativePath.startsWith(`${normalizedFolderPath}/`);
-    if (!withinPlaylistFolder || !isVideoExtension(path.extname(relativePath))) continue;
+    const withinTargetFolder = relativePath === normalizedFolderPath || relativePath.startsWith(`${normalizedFolderPath}/`);
+    if (!withinTargetFolder || !matchesExtension(path.extname(relativePath))) continue;
 
     const absolutePath = resolveWithinRoot(BROADCAST_ROOT_FOLDER, relativePath);
     if (!absolutePath) continue;
@@ -46,7 +52,7 @@ export async function addScannedPlaylistItems(command: AddScannedPlaylistItemsCo
       success: false,
       error: {
         code: "broadcast.add-scanned-playlist-items.no_valid_items",
-        message: "Nenhum dos vídeos selecionados foi encontrado na pasta — tente escanear de novo.",
+        message: "Nenhum dos itens selecionados foi encontrado na pasta — tente escanear de novo.",
       },
     };
   }

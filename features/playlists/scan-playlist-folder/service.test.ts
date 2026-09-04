@@ -36,7 +36,7 @@ describe("scanPlaylistFolder", () => {
     findPlaylistById.mockResolvedValue(null);
 
     const { scanPlaylistFolder } = await import("./service");
-    const result = await scanPlaylistFolder({ playlistId: "missing", actorId: "actor-1" });
+    const result = await scanPlaylistFolder({ playlistId: "missing", kind: "video", actorId: "actor-1" });
 
     expect(result).toEqual({
       success: false,
@@ -44,11 +44,11 @@ describe("scanPlaylistFolder", () => {
     });
   });
 
-  it("fails when the playlist has no folder configured", async () => {
+  it("fails when the playlist has no folder configured (kind video)", async () => {
     findPlaylistById.mockResolvedValue({ id: "p1", name: "Clips", folderPath: null });
 
     const { scanPlaylistFolder } = await import("./service");
-    const result = await scanPlaylistFolder({ playlistId: "p1", actorId: "actor-1" });
+    const result = await scanPlaylistFolder({ playlistId: "p1", kind: "video", actorId: "actor-1" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe("broadcast.scan-playlist-folder.no_folder");
@@ -58,7 +58,7 @@ describe("scanPlaylistFolder", () => {
     findPlaylistById.mockResolvedValue({ id: "p1", name: "Clips", folderPath: "../../outside" });
 
     const { scanPlaylistFolder } = await import("./service");
-    const result = await scanPlaylistFolder({ playlistId: "p1", actorId: "actor-1" });
+    const result = await scanPlaylistFolder({ playlistId: "p1", kind: "video", actorId: "actor-1" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe("broadcast.scan-playlist-folder.path_escape");
@@ -81,7 +81,7 @@ describe("scanPlaylistFolder", () => {
     });
 
     const { scanPlaylistFolder } = await import("./service");
-    const result = await scanPlaylistFolder({ playlistId: "p1", actorId: "actor-1" });
+    const result = await scanPlaylistFolder({ playlistId: "p1", kind: "video", actorId: "actor-1" });
 
     expect(result).toEqual({
       success: true,
@@ -92,7 +92,7 @@ describe("scanPlaylistFolder", () => {
     });
   });
 
-  it("ignores image files — imagem entra só pela biblioteca de mídia, não pelo scan de pasta", async () => {
+  it("kind video ignores image files in the same folder", async () => {
     findPlaylistById.mockResolvedValue({ id: "p1", name: "Clips", folderPath: "clips" });
     findLocalPlaylistItemsByPlaylistId.mockResolvedValue([]);
 
@@ -103,7 +103,7 @@ describe("scanPlaylistFolder", () => {
     });
 
     const { scanPlaylistFolder } = await import("./service");
-    const result = await scanPlaylistFolder({ playlistId: "p1", actorId: "actor-1" });
+    const result = await scanPlaylistFolder({ playlistId: "p1", kind: "video", actorId: "actor-1" });
 
     expect(result).toEqual({ success: true, data: { toAdd: ["clips/intro.mp4"], toRemove: [] } });
   });
@@ -113,9 +113,49 @@ describe("scanPlaylistFolder", () => {
     readdir.mockRejectedValue(new Error("ENOENT"));
 
     const { scanPlaylistFolder } = await import("./service");
-    const result = await scanPlaylistFolder({ playlistId: "p1", actorId: "actor-1" });
+    const result = await scanPlaylistFolder({ playlistId: "p1", kind: "video", actorId: "actor-1" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe("broadcast.scan-playlist-folder.folder_not_found");
+  });
+
+  // kind="image" — pedido explícito: "Vídeos da pasta, vamos fazer algo similar para 'Imagens na
+  // pasta'". Ao contrário de vídeo, NUNCA lê playlist.folderPath — sempre escaneia
+  // BROADCAST_IMAGES_FOLDER_PATH ("images"), mesmo quando a playlist não tem folderPath configurado.
+  it("kind image discovers image files under BROADCAST_IMAGES_FOLDER_PATH, ignoring video", async () => {
+    findPlaylistById.mockResolvedValue({ id: "p1", name: "Clips", folderPath: "clips" });
+    findLocalPlaylistItemsByPlaylistId.mockResolvedValue([]);
+
+    const imagesDir = path.join(ROOT, "images");
+    readdir.mockImplementation(async (dir: string) => {
+      if (dir === imagesDir) return [fileEntry("banner.png"), fileEntry("clip.mp4")];
+      throw new Error(`unexpected readdir(${dir})`);
+    });
+
+    const { scanPlaylistFolder } = await import("./service");
+    const result = await scanPlaylistFolder({ playlistId: "p1", kind: "image", actorId: "actor-1" });
+
+    expect(result).toEqual({ success: true, data: { toAdd: ["images/banner.png"], toRemove: [] } });
+  });
+
+  // Sem isso, um vídeo já cadastrado ("videos/x.mp4") apareceria como "sumiu da pasta" ao
+  // escanear imagens, só porque não está entre os arquivos de images/ descobertos.
+  it("kind image never treats an existing video item as removed", async () => {
+    findPlaylistById.mockResolvedValue({ id: "p1", name: "Clips", folderPath: "videos" });
+    findLocalPlaylistItemsByPlaylistId.mockResolvedValue([
+      { id: "video-item", relativePath: "videos/intro.mp4" },
+      { id: "image-item", relativePath: "images/banner.png" },
+    ]);
+
+    const imagesDir = path.join(ROOT, "images");
+    readdir.mockImplementation(async (dir: string) => {
+      if (dir === imagesDir) return [fileEntry("banner.png")];
+      throw new Error(`unexpected readdir(${dir})`);
+    });
+
+    const { scanPlaylistFolder } = await import("./service");
+    const result = await scanPlaylistFolder({ playlistId: "p1", kind: "image", actorId: "actor-1" });
+
+    expect(result).toEqual({ success: true, data: { toAdd: [], toRemove: [] } });
   });
 });

@@ -43,7 +43,7 @@ describe("addScannedPlaylistItems", () => {
     findPlaylistById.mockResolvedValue({ id: "p1", folderPath: null });
 
     const { addScannedPlaylistItems } = await import("./service");
-    const result = await addScannedPlaylistItems({ playlistId: "p1", relativePaths: ["clips/a.mp4"], actorId: "actor-1" });
+    const result = await addScannedPlaylistItems({ playlistId: "p1", kind: "video", relativePaths: ["clips/a.mp4"], actorId: "actor-1" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe("broadcast.add-scanned-playlist-items.invalid_playlist");
@@ -62,6 +62,7 @@ describe("addScannedPlaylistItems", () => {
     const { addScannedPlaylistItems } = await import("./service");
     const result = await addScannedPlaylistItems({
       playlistId: "p1",
+      kind: "video",
       relativePaths: [
         "clips/intro.mp4", // válido
         "clips/gone.mp4", // sumiu do disco (stat rejeita)
@@ -87,7 +88,7 @@ describe("addScannedPlaylistItems", () => {
     insertLocalPlaylistItems.mockResolvedValue([{ id: "item-1", relativePath: "clips/intro.mp4" }]);
 
     const { addScannedPlaylistItems } = await import("./service");
-    const result = await addScannedPlaylistItems({ playlistId: "p1", relativePaths: ["clips/intro.mp4"], actorId: "actor-1" });
+    const result = await addScannedPlaylistItems({ playlistId: "p1", kind: "video", relativePaths: ["clips/intro.mp4"], actorId: "actor-1" });
 
     expect(result.success).toBe(true);
     expect(insertLocalPlaylistItems).toHaveBeenCalledWith([
@@ -100,10 +101,39 @@ describe("addScannedPlaylistItems", () => {
     stat.mockRejectedValue(new Error("ENOENT"));
 
     const { addScannedPlaylistItems } = await import("./service");
-    const result = await addScannedPlaylistItems({ playlistId: "p1", relativePaths: ["clips/gone.mp4"], actorId: "actor-1" });
+    const result = await addScannedPlaylistItems({ playlistId: "p1", kind: "video", relativePaths: ["clips/gone.mp4"], actorId: "actor-1" });
 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe("broadcast.add-scanned-playlist-items.no_valid_items");
     expect(insertLocalPlaylistItems).not.toHaveBeenCalled();
+  });
+
+  // kind="image" nunca lê playlist.folderPath — usa BROADCAST_IMAGES_FOLDER_PATH direto, mesmo
+  // quando a playlist só tem folderPath="videos" (o caso real de toda playlist hoje).
+  it("kind image validates against BROADCAST_IMAGES_FOLDER_PATH regardless of playlist.folderPath", async () => {
+    findPlaylistById.mockResolvedValue({ id: "p1", folderPath: "videos" });
+    findMaxPlaylistItemOrder.mockResolvedValue(0);
+    stat.mockImplementation(async (target: string) => {
+      if (target === path.join(ROOT, "images", "banner.png")) return { isFile: () => true };
+      throw new Error("ENOENT");
+    });
+    insertLocalPlaylistItems.mockResolvedValue([{ id: "item-1", relativePath: "images/banner.png" }]);
+
+    const { addScannedPlaylistItems } = await import("./service");
+    const result = await addScannedPlaylistItems({
+      playlistId: "p1",
+      kind: "image",
+      relativePaths: [
+        "images/banner.png", // válido
+        "videos/intro.mp4", // fora da pasta de imagem
+        "images/notes.txt", // extensão não é imagem
+      ],
+      actorId: "actor-1",
+    });
+
+    expect(result.success).toBe(true);
+    expect(insertLocalPlaylistItems).toHaveBeenCalledWith([
+      { playlistId: "p1", order: 1, title: null, relativePath: "images/banner.png" },
+    ]);
   });
 });

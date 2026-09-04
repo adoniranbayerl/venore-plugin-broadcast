@@ -46,7 +46,6 @@ import {
   addAgendaEventPlaylistItemAction,
   addMediaAssetPlaylistItemAction,
   addMetricsBoardPlaylistItemAction,
-  addNewsPlaylistItemAction,
   addScannedPlaylistItemsAction,
   addWebpagePlaylistItemAction,
   createPlaylistAction,
@@ -236,8 +235,8 @@ function EditPlaylistItemForm({ item, onDone }: { item: BroadcastPlaylistItemRec
       {item.sourceType === "webpage" && (
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-2">
-            <label className="text-xs font-medium text-muted-foreground" htmlFor={`${item.id}-edit-url`}>Site ou rota interna</label>
-            {url.startsWith("http") && (
+            <label className="text-xs font-medium text-muted-foreground" htmlFor={`${item.id}-edit-url`}>Rota interna do site</label>
+            {url.startsWith("/") && (
               <a
                 href={url}
                 target="_blank"
@@ -251,6 +250,7 @@ function EditPlaylistItemForm({ item, onDone }: { item: BroadcastPlaylistItemRec
           <Input
             id={`${item.id}-edit-url`}
             name="url"
+            placeholder="/cursos"
             required
             className="w-full"
             value={url}
@@ -427,12 +427,26 @@ function SortablePlaylistItems({
   );
 }
 
-// Escanear a pasta agora só mostra uma prévia (nada é gravado) — o operador escolhe quais vídeos
+// Escanear a pasta agora só mostra uma prévia (nada é gravado) — o operador escolhe quais itens
 // novos entram (checkbox, tudo pré-marcado) e confirma; itens que sumiram da pasta aparecem à
 // parte, com o botão de apagar já existente, nunca removidos sozinhos. Pedido explícito: "quero
 // poder escolher o que entra na playlist e o que não entra" — o scan antigo inseria/apagava tudo
 // automaticamente.
-function ScanPlaylistFlow({ playlistId, onAdded }: { playlistId: string; onAdded?: () => void }) {
+//
+// kind parametriza vídeo (pasta public/broadcast/videos, comportamento original) vs imagem (pasta
+// public/broadcast/images, BROADCAST_IMAGES_FOLDER_PATH) — mesmo componente pros dois, só o campo
+// oculto "kind" e os textos mudam. Pedido explícito: "Vídeos da pasta, vamos fazer algo similar
+// para 'Imagens na pasta', porque aí eu só jogo na pasta a imagem".
+function ScanPlaylistFlow({
+  playlistId,
+  kind,
+  onAdded,
+}: {
+  playlistId: string;
+  kind: "video" | "image";
+  onAdded?: () => void;
+}) {
+  const itemNoun = kind === "video" ? "vídeo" : "imagem";
   const [scanState, scanAction, scanPending] = useActionState(scanPlaylistFolderAction, initialScanState);
   const [preview, setPreview] = useState<ScanPlaylistFolderState | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -450,7 +464,7 @@ function ScanPlaylistFlow({ playlistId, onAdded }: { playlistId: string; onAdded
   useActionToast({
     pending: addPending,
     error: addState.error,
-    successMessage: "Vídeos adicionados.",
+    successMessage: kind === "video" ? "Vídeos adicionados." : "Imagens adicionadas.",
     onSuccess: () => {
       setPreview(null);
       onAdded?.();
@@ -469,10 +483,12 @@ function ScanPlaylistFlow({ playlistId, onAdded }: { playlistId: string; onAdded
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Escaneia a pasta configurada e mostra o que encontrou — você escolhe o que entra na playlist.
+        Escaneia a pasta {kind === "video" ? "de vídeos" : "de imagens"} do servidor e mostra o que encontrou — você escolhe o que
+        entra na playlist.
       </p>
       <form action={scanAction}>
         <input type="hidden" name="playlistId" value={playlistId} />
+        <input type="hidden" name="kind" value={kind} />
         <Button type="submit" variant="outline" size="sm" disabled={scanPending} className="w-full sm:w-auto">
           <RefreshCw className="size-4" />
           Escanear pasta
@@ -487,9 +503,13 @@ function ScanPlaylistFlow({ playlistId, onAdded }: { playlistId: string; onAdded
 
           {preview.toAdd.length > 0 && (
             <div className="space-y-2">
+              {/* "vídeo" é masculino, "imagem" é feminino — concordância de gênero calculada em vez
+                  de cravar um dos dois na string. */}
               <p className="text-xs font-medium text-foreground">
-                {preview.toAdd.length} vídeo{preview.toAdd.length === 1 ? "" : "s"} encontrado{preview.toAdd.length === 1 ? "" : "s"} na
-                pasta — escolha o que entra:
+                {preview.toAdd.length} {itemNoun}
+                {preview.toAdd.length === 1 ? "" : "s"} encontrad
+                {kind === "video" ? "o" : "a"}
+                {preview.toAdd.length === 1 ? "" : "s"} na pasta — escolha o que entra:
               </p>
               <ul className="max-h-48 space-y-1 overflow-y-auto">
                 {preview.toAdd.map((relativePath) => (
@@ -508,6 +528,7 @@ function ScanPlaylistFlow({ playlistId, onAdded }: { playlistId: string; onAdded
               </ul>
               <form action={addAction} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="playlistId" value={playlistId} />
+                <input type="hidden" name="kind" value={kind} />
                 <input type="hidden" name="relativePaths" value={JSON.stringify([...selected])} />
                 <Button type="submit" size="sm" disabled={addPending || selected.size === 0}>
                   Adicionar selecionados ({selected.size})
@@ -595,8 +616,8 @@ function AddWebpageItemForm({ playlistId, onAdded }: { playlistId: string; onAdd
       <input type="hidden" name="playlistId" value={playlistId} />
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor={`${playlistId}-webpage-url`}>Site ou rota interna</label>
-          {url.startsWith("http") && (
+          <label className="text-xs font-medium text-muted-foreground" htmlFor={`${playlistId}-webpage-url`}>Rota interna do site</label>
+          {url.startsWith("/") && (
             <a
               href={url}
               target="_blank"
@@ -610,12 +631,16 @@ function AddWebpageItemForm({ playlistId, onAdded }: { playlistId: string; onAdd
         <Input
           id={`${playlistId}-webpage-url`}
           name="url"
-          placeholder="https://... ou /cursos"
+          placeholder="/cursos"
           required
           className="w-full"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
         />
+        {/* Pedido explícito: "APENAS ROTAS DO DOMINIO podem ser adicionadas. Nunca sites
+            externos" — sem isso, o operador tenta colar um link de fora e só descobre que não
+            funciona depois de errar (a validação real mora em shared/webpage-url.ts). */}
+        <p className="text-xs text-muted-foreground">Só rotas internas deste site (começando com "/") — sites externos não são aceitos.</p>
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground" htmlFor={`${playlistId}-webpage-title`}>Título (opcional)</label>
@@ -632,28 +657,6 @@ function AddWebpageItemForm({ playlistId, onAdded }: { playlistId: string; onAdd
         link &quot;Testar&quot; acima pra conferir antes de adicionar — rotas internas do próprio site sempre funcionam.
       </p>
       <AudioToggleField />
-      <Button type="submit" disabled={pending} className="w-full sm:w-auto">Adicionar</Button>
-    </form>
-  );
-}
-
-function AddNewsItemForm({ playlistId, onAdded }: { playlistId: string; onAdded?: () => void }) {
-  const [state, formAction, pending] = useActionState(addNewsPlaylistItemAction, initialState);
-  useActionToast({ pending, error: state.error, successMessage: "Bloco de notícias adicionado.", onSuccess: onAdded });
-
-  return (
-    <form action={formAction} className="space-y-3">
-      <input type="hidden" name="playlistId" value={playlistId} />
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground" htmlFor={`${playlistId}-news-title`}>Título (opcional)</label>
-        <Input id={`${playlistId}-news-title`} name="title" placeholder="Notícias" className="w-full" />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground" htmlFor={`${playlistId}-news-duration`}>
-          Segundos do bloco (padrão 30)
-        </label>
-        <Input id={`${playlistId}-news-duration`} name="durationSeconds" type="number" placeholder="30" className="w-32" />
-      </div>
       <Button type="submit" disabled={pending} className="w-full sm:w-auto">Adicionar</Button>
     </form>
   );
@@ -741,7 +744,7 @@ function AddAgendaEventItemForm({
   );
 }
 
-type AddItemKind = "scan" | "media" | "webpage" | "news" | "agenda-event" | "metrics-board";
+type AddItemKind = "scan" | "scan-images" | "media" | "webpage" | "agenda-event" | "metrics-board";
 
 // Ícone renderizado (não componente) — mesmo racional de renderItemIcon.
 function renderAddOptionIcon(kind: AddItemKind): ReactNode {
@@ -749,12 +752,12 @@ function renderAddOptionIcon(kind: AddItemKind): ReactNode {
   switch (kind) {
     case "scan":
       return <Clapperboard className={className} aria-hidden="true" />;
+    case "scan-images":
+      return <ImageIcon className={className} aria-hidden="true" />;
     case "media":
       return <ImageIcon className={className} aria-hidden="true" />;
     case "webpage":
       return <Globe className={className} aria-hidden="true" />;
-    case "news":
-      return <Newspaper className={className} aria-hidden="true" />;
     case "agenda-event":
       return <CalendarDays className={className} aria-hidden="true" />;
     case "metrics-board":
@@ -843,9 +846,9 @@ function PlaylistAddSection({
 
   const options: { kind: AddItemKind; label: string }[] = [
     ...(playlist.folderPath ? [{ kind: "scan" as const, label: "Vídeos da pasta" }] : []),
+    { kind: "scan-images", label: "Imagens da pasta" },
     { kind: "media", label: "Mídia avulsa" },
     { kind: "webpage", label: "Página web" },
-    { kind: "news", label: "Bloco de notícias" },
     { kind: "agenda-event", label: "Evento em destaque" },
     ...(metricsBoards.length > 0 ? [{ kind: "metrics-board" as const, label: "Painel de métricas" }] : []),
   ];
@@ -873,10 +876,10 @@ function PlaylistAddSection({
 
       {active && (
         <div className="rounded-panel border border-border/60 bg-muted/20 p-3">
-          {active === "scan" && <ScanPlaylistFlow playlistId={playlist.id} onAdded={close} />}
+          {active === "scan" && <ScanPlaylistFlow playlistId={playlist.id} kind="video" onAdded={close} />}
+          {active === "scan-images" && <ScanPlaylistFlow playlistId={playlist.id} kind="image" onAdded={close} />}
           {active === "media" && <AddMediaAssetItemForm playlistId={playlist.id} onAdded={close} />}
           {active === "webpage" && <AddWebpageItemForm playlistId={playlist.id} onAdded={close} />}
-          {active === "news" && <AddNewsItemForm playlistId={playlist.id} onAdded={close} />}
           {active === "agenda-event" && (
             <AddAgendaEventItemForm playlistId={playlist.id} agendas={agendas} agendaEvents={agendaEvents} onAdded={close} />
           )}
@@ -959,7 +962,9 @@ function PlaylistCard({
               <SortablePlaylistItems playlistId={playlist.id} items={items} agendaEventById={agendaEventById} />
             ) : (
               <p className="text-xs text-muted-foreground">
-                {playlist.folderPath ? 'Nenhum vídeo ainda — clique em "Vídeos da pasta" abaixo pra escanear.' : "Nenhum item ainda."}
+                {playlist.folderPath
+                  ? 'Nenhum item ainda — clique em "Vídeos da pasta" ou "Imagens da pasta" abaixo pra escanear.'
+                  : "Nenhum item ainda."}
               </p>
             )}
           </div>

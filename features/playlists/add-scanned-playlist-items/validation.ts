@@ -7,7 +7,7 @@ export function validateAddScannedPlaylistItemsInput(
     return { code: "broadcast.add-scanned-playlist-items.invalid_playlist", message: "Playlist inválida." };
   }
   if (input.relativePaths.length === 0) {
-    return { code: "broadcast.add-scanned-playlist-items.invalid_items", message: "Selecione ao menos um vídeo." };
+    return { code: "broadcast.add-scanned-playlist-items.invalid_items", message: "Selecione ao menos um item." };
   }
   return null;
 }
