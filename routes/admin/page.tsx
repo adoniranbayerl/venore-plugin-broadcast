@@ -1,5 +1,14 @@
 import Link from "next/link";
-import { Activity, ArrowLeftRight, CalendarDays, ListVideo, Settings as SettingsIcon, Tv, Users } from "lucide-react";
+import {
+  Activity,
+  ArrowLeftRight,
+  CalendarDays,
+  LayoutDashboard,
+  ListVideo,
+  Settings as SettingsIcon,
+  Tv,
+  Users,
+} from "lucide-react";
 import { listUsers } from "@venore/plugin-sdk/auth";
 import { AdminAccessDenied } from "@venore/plugin-sdk/ui";
 import { AdminPageHeader } from "@venore/plugin-sdk/ui";
@@ -41,6 +50,7 @@ import { SettingsSection } from "../../components/admin/settings-section";
 import { AgendaSection } from "../../components/admin/agenda-section";
 import { ResponsiblesSection } from "../../components/admin/responsibles-section";
 import { ImportExportSection } from "../../components/admin/import-export-section";
+import { DashboardSection } from "../../components/admin/dashboard-section";
 
 // Único ponto de entrada do plugin no admin (pedido explícito: "não separe os links na navegação
 // admin") — chegou a existir uma rota satélite por permission (/admin/broadcast/agenda,
@@ -244,6 +254,18 @@ export default async function BroadcastAdminPage() {
   // de verdade: cada entrada decide sozinha se aparece, e o componente só decide entre "várias
   // abas" (Tabs) e "uma seção direta" (sem Tabs, ruído de navegação pra um item só).
   const tabs = [
+    // Primeira entrada — vira a aba padrão ao abrir /admin/broadcast (AdminOverviewNav usa
+    // tabs[0].key como estado inicial), no lugar de "Telas" (pedido explícito: "hoje ele abre
+    // direto em Telas"). Sem status/itemCount de propósito (mesmo padrão de Configurações/
+    // Administradores) — não é uma das três áreas com "pronto/precisa de atenção", não entra no
+    // grid de cards coloridos acima da Tabs.
+    hasFullAccess && {
+      key: "dashboard",
+      label: "Dashboard",
+      icon: <LayoutDashboard aria-hidden="true" />,
+      description: "Resumo do Broadcast Studio e o aviso rápido que aparece em todas as telas.",
+      view: <DashboardSection outputsCount={outputs.length} playlistsCount={playlists.length} agendasCount={agendas.length} />,
+    },
     hasOutputsAccess && {
       key: "outputs",
       label: "Telas",
