@@ -74,6 +74,17 @@ export const BROADCAST_SETTINGS = {
     defaultValue: "grande",
     label: "Tamanho da coluna de agenda e da barra de marca",
   },
+  // Chave compartilhada que o script scripts/broadcast-diag-agent.ps1 manda no header
+  // X-Diagnostics-Key de cada report — autentica o agent (não tem sessão/login, roda solto num PC
+  // de TV), não confundir com o token de saída (esse identifica QUAL tela, a chave prova que quem
+  // está mandando dado de PC é de fato um agent autorizado). Vazia por padrão: report-agent-
+  // diagnostics rejeita todo POST enquanto a chave não for gerada na tela de diagnóstico
+  // ("Gerar nova chave" -> crypto.randomUUID()).
+  diagnosticsAgentKey: {
+    key: "broadcast.diagnosticsAgentKey",
+    defaultValue: "",
+    label: "Chave do agent de diagnóstico (PowerShell)",
+  },
 } as const;
 
 export type BroadcastSettingField = keyof typeof BROADCAST_SETTINGS;

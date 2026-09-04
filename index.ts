@@ -268,3 +268,31 @@ export type {
   RegionNewsArticle,
   RegionWeather,
 } from "./contracts/types";
+
+// Diagnóstico (Fase 13 retomada, ver database/schema/index.ts) — report-* sem authorizeActor
+// (mesmo racional de getOutputState/verifyOutputPin: acesso por token/agentKey, não sessão), só
+// chamados pelas rotas de API dedicadas (routes/api/output/[token]/diagnostics/*). get-*/list-*
+// são gateados por permission, consumidos pela própria página /admin/broadcast/diagnostics.
+export { reportBrowserDiagnosticsHandler as reportBrowserDiagnostics } from "./features/diagnostics/report-browser-diagnostics/handler";
+export { reportAgentDiagnosticsHandler as reportAgentDiagnostics } from "./features/diagnostics/report-agent-diagnostics/handler";
+export { getOutputDiagnosticsHandler as getOutputDiagnostics } from "./features/diagnostics/get-output-diagnostics/handler";
+export { listDiagnosticEventsHandler as listDiagnosticEvents } from "./features/diagnostics/list-diagnostic-events/handler";
+export type {
+  ReportBrowserDiagnosticsCommand,
+  ReportBrowserDiagnosticsResult,
+} from "./features/diagnostics/report-browser-diagnostics/types";
+export type {
+  ReportAgentDiagnosticsCommand,
+  ReportAgentDiagnosticsResult,
+} from "./features/diagnostics/report-agent-diagnostics/types";
+export type { GetOutputDiagnosticsResult } from "./features/diagnostics/get-output-diagnostics/types";
+export type { ListDiagnosticEventsResult } from "./features/diagnostics/list-diagnostic-events/types";
+export type {
+  BroadcastAgentDiagnosticsSnapshot,
+  BroadcastBrowserDiagnosticsSnapshot,
+  BroadcastDiagEventLevel,
+  BroadcastDiagEventRecord,
+  BroadcastDiagEventSource,
+  BroadcastOutputDiagnosticsRecord,
+  BroadcastServerDiagnosticsSnapshot,
+} from "./contracts/types";

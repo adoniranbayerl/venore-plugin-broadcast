@@ -29,6 +29,13 @@
       "when": 1787943210289,
       "tag": "0003_even_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788540231461,
+      "tag": "0004_familiar_sabretooth",
+      "breakpoints": true
     }
   ]
 }

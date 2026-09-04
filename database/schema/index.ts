@@ -334,3 +334,56 @@ export const broadcastPlaylistEditors = broadcastSchema.table(
   },
   (table) => [primaryKey({ columns: [table.playlistId, table.userId] })],
 );
+
+// Diagnóstico (Fase 13, docs/broadcast-plano-correcoes.md — plano original perdido na extração
+// pro repo separado, retomado a partir de memória de sessão). "Estado agora" por saída, upsert —
+// nunca série temporal (ver comentário de broadcast_output_diag_events abaixo pro log). Duas
+// fontes gravam aqui, independentes uma da outra: browser (a própria view de saída reporta saúde
+// do vídeo/conexão via token, sem sessão — mesmo racional de broadcastOutputs.token) e agent (um
+// script PowerShell rodando no PC da TV, autenticado por chave compartilhada, não por token da
+// saída — ver report-agent-diagnostics). A terceira fonte (server: lag do event loop, GC, saúde da
+// rota de stream) é processo-inteiro, não por saída — nunca persistida aqui, sempre lida ao vivo
+// de runtime/diagnostics-bus.ts.
+export const broadcastOutputDiagnostics = broadcastSchema.table(
+  "output_diagnostics",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    outputId: text("output_id")
+      .notNull()
+      .references(() => broadcastOutputs.id, { onDelete: "cascade" }),
+    browserSnapshot: jsonb("browser_snapshot"),
+    browserReportedAt: timestamp("browser_reported_at", { withTimezone: true }),
+    agentSnapshot: jsonb("agent_snapshot"),
+    agentReportedAt: timestamp("agent_reported_at", { withTimezone: true }),
+    // Rótulo livre que o agent manda junto do report (ex: "Recepção", mesmo texto do
+    // $StationLabel do script) — só exibição, não é identidade (quem identifica a estação é o
+    // outputToken configurado no script).
+    agentStationLabel: text("agent_station_label"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("broadcast_output_diagnostics_output_id_idx").on(table.outputId)],
+);
+
+// Log append-only de transições notáveis (vídeo sofrendo travamento, CPU/RAM alta no PC da TV) —
+// gerado no MOMENTO em que um snapshot chega e cruza um limiar (ver report-browser-diagnostics/
+// report-agent-diagnostics), não por um job varrendo o processo em background. outputId nulo é o
+// único caso de evento de escopo `server` (o processo Next.js inteiro, não uma saída específica) —
+// não usado nesta primeira entrega (sem detecção de anomalia em background do lado do server
+// ainda), mas a coluna já fica pronta pra isso.
+export const broadcastOutputDiagEvents = broadcastSchema.table(
+  "output_diag_events",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    outputId: text("output_id").references(() => broadcastOutputs.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    level: text("level").notNull(),
+    message: text("message").notNull(),
+    detail: jsonb("detail").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("broadcast_output_diag_events_source_check", sql`${table.source} in ('browser','agent','server')`),
+    check("broadcast_output_diag_events_level_check", sql`${table.level} in ('info','warning')`),
+  ],
+);

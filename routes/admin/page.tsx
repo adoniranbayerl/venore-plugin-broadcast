@@ -1,7 +1,9 @@
-import { CalendarDays, ListVideo, Settings as SettingsIcon, Tv, Users } from "lucide-react";
+import Link from "next/link";
+import { Activity, CalendarDays, ListVideo, Settings as SettingsIcon, Tv, Users } from "lucide-react";
 import { listUsers } from "@venore/plugin-sdk/auth";
 import { AdminAccessDenied } from "@venore/plugin-sdk/ui";
 import { AdminPageHeader } from "@venore/plugin-sdk/ui";
+import { Button } from "@venore/plugin-sdk/ui";
 import { getPluginAdminPageData } from "@venore/plugin-sdk/admin";
 import {
   listAgendaEditors,
@@ -292,6 +294,18 @@ export default async function BroadcastAdminPage() {
           hasFullAccess
             ? "Monte playlists de vídeo/imagem/site/notícias, gerencie a agenda e gere a URL que abre na TV — o layout da tela é fixo e cuidado automaticamente."
             : "As telas, playlists e/ou agendas atribuídas a você."
+        }
+        actions={
+          hasOutputsAccess ? (
+            // Ponto de entrada da sub-rota de diagnóstico (Fase 13) — deliberadamente um botão
+            // aqui, não uma entrada própria na sidebar (ver comentário em routes/route-table.ts).
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/broadcast/diagnostics">
+                <Activity className="size-4" aria-hidden="true" />
+                Diagnóstico
+              </Link>
+            </Button>
+          ) : undefined
         }
       />
 

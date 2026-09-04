@@ -30,6 +30,11 @@ const FALLBACK_POLL_MS = 15_000;
 const DISCONNECT_CHECK_MS = 5_000;
 const DISCONNECTED_AFTER_MS = 45_000;
 
+// Fase 13 (diagnóstico) — mesmo ritmo do heartbeat SSE (routes/api/output-events/route.ts), sem
+// motivo pra ser mais frequente: isto é telemetria pra um admin olhar de vez em quando, não um
+// sinal de controle. Ver get-output-diagnostics/service.ts (BROWSER_STALE_MS = 3x este valor).
+const DIAGNOSTICS_REPORT_MS = 20_000;
+
 // Animação CSS pura (@keyframes broadcast-scene-fade, ver <style> abaixo), não mais um
 // useState+useEffect setando opacity depois do mount. Achado real: numa TV com engine JS
 // desatualizada/bundle que falha ao carregar, o opacity:0 inicial (que o SSR já manda pronto no
@@ -178,6 +183,49 @@ export function OutputCanvas({ token, initialState }: { token: string; initialSt
     }, DISCONNECT_CHECK_MS);
     return () => clearInterval(interval);
   }, []);
+
+  // Fase 13 (diagnóstico) — reporta saúde da TV pro servidor a cada DIAGNOSTICS_REPORT_MS, pra
+  // /admin/broadcast/diagnostics mostrar. Lê document.querySelector("video") DIRETO, em vez de
+  // receber um callback threaded por LayerRenderer -> VideoZoneLayer -> PlaylistLayer -> VideoSlide
+  // (esse arquivo, layer-renderer.tsx, tem invariantes cuidadosamente comentadas sobre nunca mudar
+  // a FORMA da árvore React — um bug real documentado lá mostra que isso remonta o <video> e
+  // reinicia a reprodução; uma sonda independente no DOM não toca nada daquela árvore). Sempre
+  // fire-and-forget: telemetria não pode, sob nenhuma circunstância, afetar a reprodução real.
+  useEffect(() => {
+    const report = () => {
+      const video = document.querySelector<HTMLVideoElement>("video");
+      const quality = video && typeof video.getVideoPlaybackQuality === "function" ? video.getVideoPlaybackQuality() : null;
+      const performanceMemory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
+
+      const snapshot = {
+        hasVideo: video !== null,
+        droppedRatio: quality && quality.totalVideoFrames > 0 ? quality.droppedVideoFrames / quality.totalVideoFrames : null,
+        videoPaused: video?.paused ?? null,
+        videoReadyState: video?.readyState ?? null,
+        disconnected,
+        documentHidden: document.hidden,
+        userAgent: navigator.userAgent,
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        usedJsHeapSizeBytes: performanceMemory?.usedJSHeapSize ?? null,
+      };
+
+      try {
+        void fetch(`/api/broadcast/output/${token}/diagnostics/browser`, {
+          method: "POST",
+          keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(snapshot),
+        }).catch(() => {});
+      } catch {
+        // Nunca deixa telemetria derrubar a view — mesmo racional do fetch acima.
+      }
+    };
+
+    report();
+    const interval = setInterval(report, DIAGNOSTICS_REPORT_MS);
+    return () => clearInterval(interval);
+  }, [token, disconnected]);
 
   // "alert" nunca vem do mapa de layers normal — vira um irmão de altura natural no fim da coluna
   // flex (ver AlertBanner), pra empurrar o layout em vez de sobrepor (pedido explícito: "quando a

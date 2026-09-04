@@ -260,3 +260,83 @@ export type BroadcastOutputEvent =
   | { type: "offline-changed"; offline: boolean }
   | { type: "alert-changed" }
   | { type: "playlist-changed" };
+
+// Snapshot que a própria view de saída reporta sobre si mesma (ver components/output/output-
+// canvas.tsx) — lido direto do DOM (document.querySelector("video") +
+// getVideoPlaybackQuality()), independente do watchdog interno de VideoSlide em layer-renderer.tsx
+// (sonda separada de propósito — ver comentário no plano/AGENTS deste feature: threading um
+// callback por 4 camadas de layer-renderer.tsx arriscava as invariantes de "nunca remontar o
+// <video>" documentadas lá). Todo campo é opcional/best-effort: uma TV sem <video> tocando agora
+// (playlist de só imagem, por exemplo) manda um snapshot sem os campos de vídeo.
+export type BroadcastBrowserDiagnosticsSnapshot = {
+  hasVideo: boolean;
+  droppedRatio: number | null;
+  videoPaused: boolean | null;
+  videoReadyState: number | null;
+  disconnected: boolean;
+  documentHidden: boolean;
+  userAgent: string;
+  screenWidth: number;
+  screenHeight: number;
+  usedJsHeapSizeBytes: number | null;
+};
+
+// Snapshot que o script scripts/broadcast-diag-agent.ps1 reporta sobre o PC da TV. GPU é best-
+// effort (nome/driver via WMI, não % de carga — Windows não expõe isso de forma confiável pra
+// iGPU em todo hardware). serverReachable/serverLatencyMs vêm de um Test-NetConnection do próprio
+// agent contra o servidor, útil pra distinguir "o PC está mal" de "a rede até o servidor está
+// ruim" quando o agent para de reportar.
+export type BroadcastAgentDiagnosticsSnapshot = {
+  cpuLoadPercent: number | null;
+  ramUsedPercent: number | null;
+  ramTotalMb: number | null;
+  gpuName: string | null;
+  uptimeSeconds: number | null;
+  localIp: string | null;
+  serverReachable: boolean | null;
+  serverLatencyMs: number | null;
+};
+
+// Diagnóstico consolidado de UMA saída pra tela /admin/broadcast/diagnostics — browserStale/
+// agentStale calculados em cima de *ReportedAt contra os limiares de report (20s browser, 30s
+// agent — ver get-output-diagnostics/service.ts), não guardados no banco.
+export type BroadcastOutputDiagnosticsRecord = {
+  outputId: string;
+  browserSnapshot: BroadcastBrowserDiagnosticsSnapshot | null;
+  browserReportedAt: Date | null;
+  browserStale: boolean;
+  agentSnapshot: BroadcastAgentDiagnosticsSnapshot | null;
+  agentReportedAt: Date | null;
+  agentStationLabel: string | null;
+  agentStale: boolean;
+};
+
+// Snapshot do processo Next.js inteiro — sempre lido ao vivo (runtime/diagnostics-bus.ts), nunca
+// persistido; não é por saída.
+export type BroadcastServerDiagnosticsSnapshot = {
+  uptimeSeconds: number;
+  rssBytes: number;
+  eventLoopLagP50Ms: number;
+  eventLoopLagP99Ms: number;
+  gcCountByKind: Record<string, number>;
+  streamsActive: number;
+  streamsTotal: number;
+  streamsAbortedTotal: number;
+  avgTtfbMs: number | null;
+};
+
+export const BROADCAST_DIAG_EVENT_SOURCES = ["browser", "agent", "server"] as const;
+export type BroadcastDiagEventSource = (typeof BROADCAST_DIAG_EVENT_SOURCES)[number];
+
+export const BROADCAST_DIAG_EVENT_LEVELS = ["info", "warning"] as const;
+export type BroadcastDiagEventLevel = (typeof BROADCAST_DIAG_EVENT_LEVELS)[number];
+
+export type BroadcastDiagEventRecord = {
+  id: string;
+  outputId: string | null;
+  source: BroadcastDiagEventSource;
+  level: BroadcastDiagEventLevel;
+  message: string;
+  detail: Record<string, unknown>;
+  createdAt: Date;
+};

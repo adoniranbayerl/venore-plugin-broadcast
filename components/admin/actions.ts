@@ -855,3 +855,24 @@ export async function getConnectedOutputIpsAction(): Promise<Record<string, stri
   const result = await listConnectedOutputIps();
   return result.success ? result.data : {};
 }
+
+const diagnosticsReturnTo = "/admin/broadcast/diagnostics";
+
+export async function getBroadcastDiagnosticsAgentKey(): Promise<string> {
+  const result = await getSetting({ key: BROADCAST_SETTINGS.diagnosticsAgentKey.key });
+  return result.success && typeof result.data?.value === "string" ? result.data.value : "";
+}
+
+// Gera uma chave nova (UUID) pro agent PowerShell — sem form/campo de digitar, o operador não
+// precisa inventar/lembrar segredo nenhum, só copiar o valor gerado pro topo do script em cada
+// estação. Trocar a chave invalida instantaneamente qualquer agent rodando com a chave antiga
+// (report-agent-diagnostics compara contra o valor atual do setting a cada request).
+export async function regenerateDiagnosticsAgentKeyAction(): Promise<BroadcastActionState> {
+  if (!(await isPluginActive("broadcast"))) return { error: PLUGIN_DISABLED_ERROR };
+
+  const result = await setSetting({ key: BROADCAST_SETTINGS.diagnosticsAgentKey.key, value: crypto.randomUUID() });
+  if (!result.success) return { error: result.error.message };
+
+  revalidatePath(diagnosticsReturnTo);
+  return { error: null };
+}
