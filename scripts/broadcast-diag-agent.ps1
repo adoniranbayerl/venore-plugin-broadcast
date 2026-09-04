@@ -52,13 +52,26 @@ function Get-DiagnosticsSnapshot {
         $localIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch "Loopback" } | Select-Object -First 1).IPAddress
     } catch {}
 
+    # Socket TCP puro com timeout curto, não Test-NetConnection — bug real reportado: o cmdlet
+    # também tenta ping (ICMP) por padrão, e trava esperando resposta indefinidamente numa rede
+    # onde ICMP está bloqueado (comum em Windows/firewall corporativo), mesmo com o TCP acessível.
+    # ConnectAsync + Wait(timeout) nunca bloqueia além dos 3s, não depende de ICMP nenhum.
     $serverReachable = $null
     $serverLatencyMs = $null
     try {
         $uri = [System.Uri]$ServerUrl
-        $test = Test-NetConnection -ComputerName $uri.Host -Port $(if ($uri.Port -gt 0) { $uri.Port } else { 80 }) -WarningAction SilentlyContinue
-        $serverReachable = $test.TcpTestSucceeded
-        if ($test.PingReplyDetails) { $serverLatencyMs = $test.PingReplyDetails.RoundTripTime }
+        $port = if ($uri.Port -gt 0) { $uri.Port } else { 80 }
+        $tcpClient = New-Object System.Net.Sockets.TcpClient
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        $connectTask = $tcpClient.ConnectAsync($uri.Host, $port)
+        if ($connectTask.Wait(3000)) {
+            $stopwatch.Stop()
+            $serverReachable = $tcpClient.Connected
+            $serverLatencyMs = $stopwatch.ElapsedMilliseconds
+        } else {
+            $serverReachable = $false
+        }
+        $tcpClient.Close()
     } catch {
         $serverReachable = $false
     }
