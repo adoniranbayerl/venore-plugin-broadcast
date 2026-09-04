@@ -8,6 +8,8 @@ import { GET as outputStateGET } from "./api/output-state/route";
 import { POST as outputDiagnosticsBrowserPOST } from "./api/output-diagnostics-browser/route";
 import { POST as outputDiagnosticsAgentPOST } from "./api/output-diagnostics-agent/route";
 import { GET as outputDiagnosticsAgentScriptGET } from "./api/output-diagnostics-agent-script/route";
+import { GET as broadcastExportGET } from "./api/broadcast-export/route";
+import { POST as broadcastImportPOST } from "./api/broadcast-import/route";
 
 // A view de saída foge por completo da shell do (platform) — área `standalone` (caminho após
 // /ext/), casada pelo dispatcher genérico src/app/ext/[...slug]/ do core. URL: /ext/broadcast/out/:token.
@@ -30,5 +32,9 @@ export const broadcastRouteTable: PluginRouteTable = {
     // Pública de propósito (pedido explícito: "no PC eu posso entrar na rota e baixar o script") —
     // devolve o .ps1 já preenchido pra esta saída, ver comentário no handler.
     { pattern: "output/:token/diagnostics/agent-script", handlers: { GET: asPluginApiHandler(outputDiagnosticsAgentScriptGET) } },
+    // Pacote único (telas + playlists + agenda + mídia) — gateado por sessão admin dentro do
+    // handler (BROADCAST_BUNDLE_REQUIRED_PERMISSIONS), não público como as rotas acima.
+    { pattern: "export", handlers: { GET: asPluginApiHandler(broadcastExportGET) } },
+    { pattern: "import", handlers: { POST: asPluginApiHandler(broadcastImportPOST) } },
   ],
 };

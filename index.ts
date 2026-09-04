@@ -303,3 +303,31 @@ export type {
   BroadcastOutputDiagnosticsRecord,
   BroadcastServerDiagnosticsSnapshot,
 } from "./contracts/types";
+
+// Import/export do pacote único (telas + playlists + agenda + mídia) — mesmo padrão de
+// venore-plugin-academy (export-course-bundle/import-course-bundle), formato próprio em
+// shared/broadcast-bundle-manifest.ts. Gate AND nas duas permissions
+// (BROADCAST_BUNDLE_REQUIRED_PERMISSIONS) dentro de cada handler, não OR.
+export { exportBroadcastBundleHandler as exportBroadcastBundle } from "./features/import-export/export-broadcast-bundle/handler";
+export { toExportZip } from "./features/import-export/export-broadcast-bundle/view";
+export type {
+  ExportBroadcastBundleAssetFile,
+  ExportBroadcastBundleData,
+  ExportBroadcastBundleResult,
+} from "./features/import-export/export-broadcast-bundle/types";
+
+export { importBroadcastBundleHandler as importBroadcastBundle } from "./features/import-export/import-broadcast-bundle/handler";
+export type {
+  BroadcastImportReport,
+  BroadcastImportReportLine,
+  BroadcastImportReportLineKind,
+  ImportBroadcastBundleCommand,
+  ImportBroadcastBundleResult,
+} from "./features/import-export/import-broadcast-bundle/types";
+
+export {
+  BROADCAST_BUNDLE_FORMAT,
+  BROADCAST_BUNDLE_FORMAT_VERSION,
+  BROADCAST_BUNDLE_REQUIRED_PERMISSIONS,
+} from "./shared/broadcast-bundle-manifest";
+export type { BroadcastBundleManifest } from "./shared/broadcast-bundle-manifest";

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, CalendarDays, ListVideo, Settings as SettingsIcon, Tv, Users } from "lucide-react";
+import { Activity, ArrowLeftRight, CalendarDays, ListVideo, Settings as SettingsIcon, Tv, Users } from "lucide-react";
 import { listUsers } from "@venore/plugin-sdk/auth";
 import { AdminAccessDenied } from "@venore/plugin-sdk/ui";
 import { AdminPageHeader } from "@venore/plugin-sdk/ui";
@@ -40,6 +40,7 @@ import { OutputsSection } from "../../components/admin/outputs-section";
 import { SettingsSection } from "../../components/admin/settings-section";
 import { AgendaSection } from "../../components/admin/agenda-section";
 import { ResponsiblesSection } from "../../components/admin/responsibles-section";
+import { ImportExportSection } from "../../components/admin/import-export-section";
 
 // Único ponto de entrada do plugin no admin (pedido explícito: "não separe os links na navegação
 // admin") — chegou a existir uma rota satélite por permission (/admin/broadcast/agenda,
@@ -283,6 +284,15 @@ export default async function BroadcastAdminPage() {
       icon: <Users aria-hidden="true" />,
       description: "",
       view: adminsView,
+    },
+    // Pacote único (telas + playlists + agenda + mídia) — mesmo gate de "Configurações"
+    // (hasFullAccess, não escopo de editor atribuído: toca a instalação inteira).
+    hasFullAccess && {
+      key: "import-export",
+      label: "Importar/Exportar",
+      icon: <ArrowLeftRight aria-hidden="true" />,
+      description: "",
+      view: <ImportExportSection />,
     },
   ].filter((tab): tab is Exclude<typeof tab, false> => tab !== false);
 
