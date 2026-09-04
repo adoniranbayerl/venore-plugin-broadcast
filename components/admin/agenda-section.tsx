@@ -893,7 +893,20 @@ function AgendaCard({
           </CardContent>
         )}
         <CardFooter className="border-t-primary/20 bg-primary/8">
-          <Button type="button" variant="default" size="sm" className="w-full" onClick={() => setCollapsed(false)}>
+          {/* Bug real reportado: este botão só abria o card (setCollapsed(false)), nunca o
+              formulário — parecia quebrado, já que era o botão mais visível do card (primary
+              sólido, largura cheia) contra o link discreto de dentro (perto de "Eventos"). Agora
+              expande e já abre o formulário de criação num único clique. */}
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              setCollapsed(false);
+              setAddingEvent(true);
+            }}
+          >
             <CalendarPlus className="size-4" />
             Novo evento
           </Button>
