@@ -52,8 +52,9 @@ export function DiagnosticsAgentKeyForm({ currentKey }: { currentKey: string }) 
         </Button>
       </form>
       <p className="text-xs text-muted-foreground">
-        Cole este valor em <code>$AgentKey</code> no topo de <code>scripts/broadcast-diag-agent.ps1</code> em cada PC de TV. Gerar uma
-        chave nova invalida instantaneamente qualquer agent rodando com a chave antiga.
+        O link &quot;Baixar script do agent pra esta tela&quot;, em cada card de tela abaixo, já baixa o script com esta chave preenchida
+        — não precisa copiar o valor à mão. Gerar uma chave nova invalida instantaneamente qualquer agent rodando com a chave antiga
+        (baixe o script de novo pra cada PC depois de trocar).
       </p>
     </div>
   );

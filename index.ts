@@ -277,6 +277,13 @@ export { reportBrowserDiagnosticsHandler as reportBrowserDiagnostics } from "./f
 export { reportAgentDiagnosticsHandler as reportAgentDiagnostics } from "./features/diagnostics/report-agent-diagnostics/handler";
 export { getOutputDiagnosticsHandler as getOutputDiagnostics } from "./features/diagnostics/get-output-diagnostics/handler";
 export { listDiagnosticEventsHandler as listDiagnosticEvents } from "./features/diagnostics/list-diagnostic-events/handler";
+// Pública (mesmo racional dos outros report-*/get-output-state) — devolve scripts/broadcast-diag-
+// agent.ps1 já preenchido pro token dado, servido por routes/api/output-diagnostics-agent-script.
+export { generateAgentScriptHandler as generateAgentScript } from "./features/diagnostics/generate-agent-script/handler";
+export type {
+  GenerateAgentScriptCommand,
+  GenerateAgentScriptResult,
+} from "./features/diagnostics/generate-agent-script/types";
 export type {
   ReportBrowserDiagnosticsCommand,
   ReportBrowserDiagnosticsResult,

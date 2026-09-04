@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Cpu, MonitorSmartphone, Server as ServerIcon } from "lucide-react";
+import { ArrowLeft, Cpu, Download, MonitorSmartphone, Server as ServerIcon } from "lucide-react";
 import { AdminAccessDenied } from "@venore/plugin-sdk/ui";
 import { AdminPageHeader } from "@venore/plugin-sdk/ui";
 import { getPluginAdminPageData } from "@venore/plugin-sdk/admin";
@@ -99,7 +99,15 @@ function ServerDiagnosticsCard({ server }: { server: BroadcastServerDiagnosticsS
   );
 }
 
-function OutputDiagnosticsCard({ output, diagnostics }: { output: BroadcastOutputRecord; diagnostics: BroadcastOutputDiagnosticsRecord }) {
+function OutputDiagnosticsCard({
+  output,
+  diagnostics,
+  hasAgentKey,
+}: {
+  output: BroadcastOutputRecord;
+  diagnostics: BroadcastOutputDiagnosticsRecord;
+  hasAgentKey: boolean;
+}) {
   const browserTone = !diagnostics.browserReportedAt ? "muted" : diagnostics.browserStale ? "warning" : "success";
   const agentTone = !diagnostics.agentReportedAt ? "muted" : diagnostics.agentStale ? "warning" : "success";
 
@@ -150,8 +158,25 @@ function OutputDiagnosticsCard({ output, diagnostics }: { output: BroadcastOutpu
           ) : (
             // O fallback pedido explicitamente: nunca erro/vermelho, só um aviso mudo de que o
             // agent ainda não foi configurado nesta estação.
+            <p className="text-xs text-muted-foreground">Agent não instalado nesta tela — baixe e rode o script abaixo no PC desta TV.</p>
+          )}
+          {/* Rota pública de propósito (pedido explícito: "no PC eu posso entrar na rota e baixar
+              o script") — devolve o .ps1 já preenchido com token/chave atuais pra esta saída, sem
+              precisar copiar arquivo/editar nada à mão. Visível mesmo com agent já configurado,
+              pra rebaixar depois de gerar uma chave nova. Escondido enquanto não existe chave
+              (hasAgentKey) — a rota recusaria o download mesmo assim, mas nem oferece o link
+              quebrado. */}
+          {hasAgentKey ? (
+            <a
+              href={`/api/broadcast/output/${output.token}/diagnostics/agent-script`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-foreground underline underline-offset-2 ui-motion-base hover:text-primary"
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+              Baixar script do agent pra esta tela
+            </a>
+          ) : (
             <p className="text-xs text-muted-foreground">
-              Agent não instalado nesta tela — rode <code>scripts/broadcast-diag-agent.ps1</code> no PC desta TV pra ver CPU/RAM/rede aqui.
+              Nenhuma chave de agent gerada ainda — peça a um administrador (broadcast.manage) pra gerar em &quot;Chave do agent&quot;.
             </p>
           )}
         </div>
@@ -197,8 +222,13 @@ export default async function BroadcastDiagnosticsPage() {
     listOutputs(),
     getOutputDiagnostics(),
     hasFullAccess ? listDiagnosticEvents() : Promise.resolve(null),
-    hasFullAccess ? getBroadcastDiagnosticsAgentKey() : Promise.resolve(""),
+    // Buscado pra QUALQUER ator com acesso à página (não só hasFullAccess) — o link "Baixar
+    // script" de cada tela precisa saber se existe chave configurada, mesmo pra quem só tem
+    // broadcast.outputs.manage. O VALOR da chave em si só é exibido na seção "Chave do agent"
+    // abaixo, que continua exclusiva de hasFullAccess.
+    getBroadcastDiagnosticsAgentKey(),
   ]);
+  const hasAgentKey = agentKey.length > 0;
 
   const outputs = outputsResult.success ? outputsResult.data : [];
   const diagnosticsByOutputId = new Map(
@@ -227,7 +257,9 @@ export default async function BroadcastDiagnosticsPage() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {outputs.map((output) => {
           const diagnostics = diagnosticsByOutputId.get(output.id);
-          return diagnostics ? <OutputDiagnosticsCard key={output.id} output={output} diagnostics={diagnostics} /> : null;
+          return diagnostics ? (
+            <OutputDiagnosticsCard key={output.id} output={output} diagnostics={diagnostics} hasAgentKey={hasAgentKey} />
+          ) : null;
         })}
         {outputs.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma tela cadastrada ainda.</p>}
       </div>

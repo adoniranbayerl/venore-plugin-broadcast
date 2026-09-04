@@ -7,6 +7,7 @@ import { GET as outputEventsGET } from "./api/output-events/route";
 import { GET as outputStateGET } from "./api/output-state/route";
 import { POST as outputDiagnosticsBrowserPOST } from "./api/output-diagnostics-browser/route";
 import { POST as outputDiagnosticsAgentPOST } from "./api/output-diagnostics-agent/route";
+import { GET as outputDiagnosticsAgentScriptGET } from "./api/output-diagnostics-agent-script/route";
 
 // A view de saída foge por completo da shell do (platform) — área `standalone` (caminho após
 // /ext/), casada pelo dispatcher genérico src/app/ext/[...slug]/ do core. URL: /ext/broadcast/out/:token.
@@ -26,5 +27,8 @@ export const broadcastRouteTable: PluginRouteTable = {
     { pattern: "output/:token/state", handlers: { GET: asPluginApiHandler(outputStateGET) } },
     { pattern: "output/:token/diagnostics/browser", handlers: { POST: asPluginApiHandler(outputDiagnosticsBrowserPOST) } },
     { pattern: "output/:token/diagnostics/agent", handlers: { POST: asPluginApiHandler(outputDiagnosticsAgentPOST) } },
+    // Pública de propósito (pedido explícito: "no PC eu posso entrar na rota e baixar o script") —
+    // devolve o .ps1 já preenchido pra esta saída, ver comentário no handler.
+    { pattern: "output/:token/diagnostics/agent-script", handlers: { GET: asPluginApiHandler(outputDiagnosticsAgentScriptGET) } },
   ],
 };

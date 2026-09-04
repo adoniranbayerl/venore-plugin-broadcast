@@ -4,11 +4,15 @@
 # de diagnóstico mostra "Agent não instalado nesta tela" pra essa TV — nunca bloqueia nada, é
 # puramente informativo.
 #
-# CONFIGURAÇÃO — edite estes 5 valores pra CADA estação/PC antes de rodar:
-$ServerUrl = "http://192.168.10.10:3000"    # a mesma origem que a TV usa pra abrir /ext/broadcast/out/...
-$OutputToken = "COLE-O-TOKEN-DA-SAIDA-AQUI" # o token da URL desta TV (/ext/broadcast/out/<token>)
-$AgentKey = "COLE-A-CHAVE-GERADA-NO-ADMIN"  # gerada em /admin/broadcast/diagnostics -> "Chave do agent"
-$StationLabel = "Recepção"                   # nome livre, só pra identificar a estação na tela de diagnóstico
+# CONFIGURAÇÃO — os 4 valores abaixo (entre __duplo-sublinhado__) são preenchidos automaticamente
+# quando este arquivo é baixado pela rota /api/broadcast/output/:token/diagnostics/agent-script
+# (link "Baixar script" na própria tela de diagnóstico, por saída) — nada pra editar à mão nesse
+# caminho. Baixando o arquivo cru do repositório (git clone) em vez da rota, edite os 4 valores
+# você mesmo antes de rodar.
+$ServerUrl = "__SERVER_URL__"       # origem do servidor (a mesma que a TV usa pra abrir /ext/broadcast/out/...)
+$OutputToken = "__OUTPUT_TOKEN__"   # token da URL desta TV (/ext/broadcast/out/<token>)
+$AgentKey = "__AGENT_KEY__"         # chave atual gerada em /admin/broadcast/diagnostics -> "Chave do agent"
+$StationLabel = "__STATION_LABEL__" # nome livre, só pra identificar a estação na tela de diagnóstico
 $IntervalSeconds = 30
 
 # GPU é best-effort: WMI não expõe % de uso de iGPU de forma confiável em todo hardware Windows —
