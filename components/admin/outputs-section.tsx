@@ -132,7 +132,11 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
 // a ação principal do card, não mais um botão secundário entre outros.
 function CopyOutputUrlButton({ token }: { token: string }) {
   const [copied, setCopied] = useState(false);
-  const path = `/broadcast/out/${token}`;
+  // Bug real reportado: este componente ainda gerava a URL pré-migração (/broadcast/out/:token),
+  // que nunca existiu depois que a rota de saída virou o dispatcher genérico /ext/... (ver
+  // routes/route-table.ts) — o botão "Copiar link da TV" estava entregando um link que sempre dava
+  // 404, ninguém tinha como perceber sem abrir o link.
+  const path = `/ext/broadcast/out/${token}`;
 
   return (
     <Button
@@ -206,7 +210,9 @@ function OutputCoverPreview({ token }: { token: string }) {
       {open && scale > 0 ? (
         <>
           <iframe
-            src={`/broadcast/out/${token}`}
+            // Mesmo bug/fix de CopyOutputUrlButton acima — o preview ao vivo do card também
+            // apontava pra URL pré-migração.
+            src={`/ext/broadcast/out/${token}`}
             title="Preview da tela"
             style={{
               width: PREVIEW_DESIGN_WIDTH,
